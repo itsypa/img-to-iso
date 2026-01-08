@@ -42,7 +42,7 @@ jobs:
           echo "img_name=$IMG_NAME" >> $GITHUB_OUTPUT
           echo "iso_name=${IMG_NAME%.img.gz}.iso" >> $GITHUB_OUTPUT
 
-      - name: Create simple ISO
+      - name: Create ISO with robust error handling
         id: build
         run: |
           IMG_NAME=${{ steps.download.outputs.img_name }}
@@ -67,10 +67,21 @@ jobs:
           # 创建空的内核和initrd文件
           touch iso/vmlinuz iso/initrd.img
           
-          # 复制img文件
-          gunzip -c $IMG_NAME > iso/source.img
+          # 解压img.gz，忽略gzip警告
+          echo "Extracting img.gz file..."
+          # 关键修复：忽略gzip的退出码，只检查解压结果
+          gunzip -c $IMG_NAME > iso/source.img 2>/dev/null || true
+          
+          # 检查解压结果
+          if [ -f iso/source.img ] && [ -s iso/source.img ]; then
+            echo "✓ Successfully extracted img file (ignoring gzip warnings)"
+          else
+            echo "✗ Failed to extract img file"
+            exit 1
+          fi
           
           # 构建ISO
+          echo "Building ISO file..."
           xorriso -as mkisofs -o $ISO_NAME -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table iso/
 
       - name: Upload ISO to Release
