@@ -22,13 +22,20 @@ if [ ! -f "$IMG_GZ_FILE" ]; then
     exit 1
 fi
 
-# 检查输入文件是否为.gz格式
-if [[ "$IMG_GZ_FILE" != *.img.gz ]]; then
-    echo "ERROR: Input file must be a .img.gz file"
+# 确定输入文件类型
+if [[ "$IMG_GZ_FILE" == *.img.gz ]]; then
+    IS_GZIPPED=true
+    DEFAULT_ISO_NAME="${IMG_GZ_FILE%.img.gz}.iso"
+    SOURCE_IMG="$WORK_DIR/source.img"
+elif [[ "$IMG_GZ_FILE" == *.img ]]; then
+    IS_GZIPPED=false
+    DEFAULT_ISO_NAME="${IMG_GZ_FILE%.img}.iso"
+    SOURCE_IMG="$WORK_DIR/source.img"
+else
+    echo "ERROR: Input file must be a .img or .img.gz file"
     exit 1
 fi
 
-DEFAULT_ISO_NAME="${IMG_GZ_FILE%.img.gz}.iso"
 ISO_NAME=${2:-$DEFAULT_ISO_NAME}
 
 # 创建工作目录
@@ -43,17 +50,23 @@ fi
 
 mkdir -p $WORK_DIR $BOOT_DIR $ISO_DIR
 
-echo "[1/6] Extracting img.gz file..."
-# 检查.gz文件完整性
+if [ "$IS_GZIPPED" = true ]; then
+    echo "[1/6] Extracting img.gz file..."
+    # 检查.gz文件完整性
 gzip -t $IMG_GZ_FILE || {
-    echo "WARNING: gzip file integrity check failed, but attempting extraction anyway..."
-    # 使用cat代替gunzip进行更容错的提取
-    gunzip -c $IMG_GZ_FILE 2>/dev/null > $WORK_DIR/source.img
-}
+        echo "WARNING: gzip file integrity check failed, but attempting extraction anyway..."
+    }
+    # 使用gunzip提取
+    gunzip -c $IMG_GZ_FILE 2>/dev/null > $SOURCE_IMG
+else
+    echo "[1/6] Copying img file..."
+    # 直接复制.img文件
+    cp -f $IMG_GZ_FILE $SOURCE_IMG
+fi
 
-# 检查提取后的文件大小
-if [ ! -s $WORK_DIR/source.img ]; then
-    echo "ERROR: Failed to extract img file or extracted file is empty"
+# 检查处理后的文件大小
+if [ ! -s $SOURCE_IMG ]; then
+    echo "ERROR: Failed to process img file or processed file is empty"
     exit 1
 fi
 
@@ -95,7 +108,7 @@ EOF
 echo "[3/6] Preparing ISO filesystem..."
 
 # 复制镜像文件到ISO目录
-cp -f $WORK_DIR/source.img $ISO_DIR/
+cp -f $SOURCE_IMG $ISO_DIR/
 
 # 创建安装脚本
 cat > $ISO_DIR/install.sh << 'EOF'
