@@ -11,10 +11,6 @@ on:
         description: 'iStoreOS Version (optional)'
         required: false
         default: ''
-      output_iso_name:
-        description: 'Output ISO Filename (default: isstoreos-live.iso)'
-        required: false
-        default: 'isstoreos-live.iso'
 
 jobs:
   build-iso:
@@ -40,25 +36,37 @@ jobs:
             jq
       
       - name: Download iStoreOS img.gz
+        id: download
         run: |
           if [ -n "${{ github.event.inputs.isstoreos_version }}" ]; then
             VERSION=${{ github.event.inputs.isstoreos_version }}
-            wget -O isstoreos.img.gz https://github.com/istoreos/istoreos/releases/download/v${VERSION}/istoreos-x86-64-generic-squashfs-combined.img.gz
+            IMG_NAME="istoreos-x86-64-generic-squashfs-combined.img.gz"
+            wget -O "$IMG_NAME" https://github.com/istoreos/istoreos/releases/download/v${VERSION}/$IMG_NAME
           else
             # Get latest release
             LATEST_RELEASE=$(curl -s https://api.github.com/repos/istoreos/istoreos/releases/latest)
             IMG_URL=$(echo $LATEST_RELEASE | jq -r '.assets[] | select(.name | contains("x86-64-generic-squashfs-combined.img.gz")) | .browser_download_url')
-            wget -O isstoreos.img.gz $IMG_URL
+            IMG_NAME=$(basename "$IMG_URL")
+            wget -O "$IMG_NAME" "$IMG_URL"
           fi
+          echo "img_name=$IMG_NAME" >> $GITHUB_OUTPUT
+          # 生成对应的ISO文件名
+          ISO_NAME="${IMG_NAME%.img.gz}.iso"
+          echo "iso_name=$ISO_NAME" >> $GITHUB_OUTPUT
       
       - name: Extract img file
-        run: gunzip isstoreos.img.gz
+        run: |
+          IMG_NAME=${{ steps.download.outputs.img_name }}
+          gunzip "$IMG_NAME"
       
       - name: Make conversion script executable
         run: chmod +x convert.sh
       
       - name: Run conversion script
-        run: sudo ./convert.sh isstoreos.img "${{ github.event.inputs.output_iso_name }}"
+        run: |
+          IMG_NAME=${{ steps.download.outputs.img_name }}
+          ISO_NAME=${{ steps.download.outputs.iso_name }}
+          sudo ./convert.sh "${IMG_NAME%.img.gz}.img" "$ISO_NAME"
         id: convert
         continue-on-error: true
       
@@ -66,7 +74,7 @@ jobs:
         if: steps.convert.outcome != 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-logs-${{ steps.download.outputs.iso_name }}
           path: |
             /tmp/istoreos-iso-build/live-build/build.log
             /tmp/istoreos-iso-build/live-build/config
@@ -76,6 +84,6 @@ jobs:
         if: steps.convert.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: isstoreos-live-iso
-          path: ${{ github.event.inputs.output_iso_name }}
+          name: ${{ steps.download.outputs.iso_name }}
+          path: ${{ steps.download.outputs.iso_name }}
           retention-days: 90
