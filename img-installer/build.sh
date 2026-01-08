@@ -3,10 +3,40 @@
 # img-installer build script
 # 基于wukongdaily/img-installer项目
 
-set -e
-
-# 增强的错误处理
-trap 'echo "ERROR: Script failed at line $LINENO"; exit 1' ERR
+# 暂时禁用set -e，因为gzip操作可能返回非零退出码但实际成功
+source_img_process() {
+    local IMG_FILE="$1"
+    local OUT_FILE="$2"
+    local IS_GZ="$3"
+    
+    if [ "$IS_GZ" = true ]; then
+        echo "[1/6] Extracting img.gz file..."
+        
+        # 检查.gz文件完整性，但不因为失败而退出
+        if ! gzip -t "$IMG_FILE" 2>/dev/null; then
+            echo "WARNING: gzip file integrity check failed, but attempting extraction anyway..."
+        fi
+        
+        # 使用gunzip提取，即使有尾部垃圾也继续
+        gunzip -c "$IMG_FILE" > "$OUT_FILE" 2>/dev/null
+        
+        # 检查提取结果
+        if [ ! -s "$OUT_FILE" ]; then
+            echo "ERROR: Failed to extract img file or extracted file is empty"
+            return 1
+        fi
+    else
+        echo "[1/6] Copying img file..."
+        cp -f "$IMG_FILE" "$OUT_FILE"
+        
+        if [ ! -s "$OUT_FILE" ]; then
+            echo "ERROR: Failed to copy img file or copied file is empty"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
 
 # 检查参数
 if [ $# -lt 1 ]; then
@@ -14,7 +44,7 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-IMG_GZ_FILE=$1
+IMG_GZ_FILE="$1"
 
 # 检查输入文件是否存在
 if [ ! -f "$IMG_GZ_FILE" ]; then
@@ -26,11 +56,9 @@ fi
 if [[ "$IMG_GZ_FILE" == *.img.gz ]]; then
     IS_GZIPPED=true
     DEFAULT_ISO_NAME="${IMG_GZ_FILE%.img.gz}.iso"
-    SOURCE_IMG="$WORK_DIR/source.img"
 elif [[ "$IMG_GZ_FILE" == *.img ]]; then
     IS_GZIPPED=false
     DEFAULT_ISO_NAME="${IMG_GZ_FILE%.img}.iso"
-    SOURCE_IMG="$WORK_DIR/source.img"
 else
     echo "ERROR: Input file must be a .img or .img.gz file"
     exit 1
@@ -42,30 +70,26 @@ ISO_NAME=${2:-$DEFAULT_ISO_NAME}
 WORK_DIR="/tmp/img-installer-work-$(date +%s)"
 BOOT_DIR="$WORK_DIR/boot"
 ISO_DIR="$WORK_DIR/iso"
+SOURCE_IMG="$WORK_DIR/source.img"
 
 # 清理旧工作目录（如果存在）
 if [ -d "$WORK_DIR" ]; then
-    rm -rf $WORK_DIR
+    rm -rf "$WORK_DIR"
 fi
 
-mkdir -p $WORK_DIR $BOOT_DIR $ISO_DIR
+mkdir -p "$WORK_DIR" "$BOOT_DIR" "$ISO_DIR"
 
-if [ "$IS_GZIPPED" = true ]; then
-    echo "[1/6] Extracting img.gz file..."
-    # 检查.gz文件完整性
-gzip -t $IMG_GZ_FILE || {
-        echo "WARNING: gzip file integrity check failed, but attempting extraction anyway..."
-    }
-    # 使用gunzip提取
-    gunzip -c $IMG_GZ_FILE 2>/dev/null > $SOURCE_IMG
-else
-    echo "[1/6] Copying img file..."
-    # 直接复制.img文件
-    cp -f $IMG_GZ_FILE $SOURCE_IMG
+# 处理img文件，使用函数内部的错误处理
+source_img_process "$IMG_GZ_FILE" "$SOURCE_IMG" "$IS_GZIPPED"
+RET_VAL=$?
+
+# 检查处理结果
+if [ $RET_VAL -ne 0 ]; then
+    exit $RET_VAL
 fi
 
-# 检查处理后的文件大小
-if [ ! -s $SOURCE_IMG ]; then
+# 再次检查处理后的文件大小，确保万无一失
+if [ ! -s "$SOURCE_IMG" ]; then
     echo "ERROR: Failed to process img file or processed file is empty"
     exit 1
 fi
