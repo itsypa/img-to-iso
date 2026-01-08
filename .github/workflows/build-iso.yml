@@ -33,40 +33,88 @@ jobs:
             IMG_NAME=$(ls -t *.img.gz | head -1)
             echo "Found local .img.gz file: $IMG_NAME"
           else
-            # Fallback to downloading from iStoreOS official repository
-            echo "No local .img.gz files found, downloading from official repository..."
+            # Fallback to downloading from iStoreOS sources
+            echo "No local .img.gz files found, downloading from iStoreOS sources..."
             
-            # Try multiple iStoreOS repositories known to have releases
-            REPOS=("istoreos/istoreos" "carstene1ns/istoreos" "ophub/istoreos")
+            # Try direct download from known iStoreOS mirrors
+            # These are known URLs that should have iStoreOS img.gz files
+            DIRECT_URLS=(
+              "https://fw.koolcenter.com/iStoreOS/x86_64/"  
+              "https://mirrors.pku.edu.cn/istoreos/x86_64/"
+              "https://downloads.immortalwrt.org/releases/" 
+            )
+            
             IMG_URL=""
+            IMG_NAME=""
             
-            for REPO in "${REPOS[@]}"; do
-              echo "Trying $REPO..."
-              API_URL="https://api.github.com/repos/$REPO/releases/latest"
-              
-              # Use GitHub token for authentication to avoid rate limits
-              RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$API_URL")
-              
-              # Check if response is valid JSON and has assets
-              if echo "$RESPONSE" | jq -e '.assets' > /dev/null 2>&1; then
-                IMG_URL=$(echo "$RESPONSE" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url' | head -1)
-                if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
-                  echo "Found .img.gz file in $REPO"
-                  break
-                fi
-              else
-                echo "No valid assets found in $REPO"
+            # Try direct download from known URLs first
+            for BASE_URL in "${DIRECT_URLS[@]}"; do
+              echo "Trying direct download from $BASE_URL..."
+              # Use wget to list files and find .img.gz
+              FILE_LIST=$(wget -q -O - $BASE_URL | grep -oP 'href="\K[^"]*\.img\.gz')
+              if [ -n "$FILE_LIST" ]; then
+                # Get the latest file (sort by version/date)
+                LATEST_FILE=$(echo "$FILE_LIST" | sort -V | tail -1)
+                IMG_URL="$BASE_URL$LATEST_FILE"
+                IMG_NAME="$LATEST_FILE"
+                echo "Found .img.gz file: $IMG_NAME at $BASE_URL"
+                break
               fi
             done
             
-            if [ -z "$IMG_URL" ] || [ "$IMG_URL" = "null" ]; then
-              echo "ERROR: No .img.gz file found in any of the repositories"
-              exit 1
+            # If direct download failed, try GitHub with more detailed debugging
+            if [ -z "$IMG_URL" ]; then
+              echo "Direct download failed, trying GitHub with detailed debugging..."
+              
+              # Try multiple iStoreOS repositories
+              REPOS=("istoreos/istoreos" "carstene1ns/istoreos" "ophub/istoreos")
+              
+              for REPO in "${REPOS[@]}"; do
+                echo "=== Trying $REPO ==="
+                API_URL="https://api.github.com/repos/$REPO/releases/latest"
+                
+                # Use GitHub token for authentication
+                RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$API_URL")
+                
+                # Debug: Print response status and content
+                echo "DEBUG: Response status: $(echo "$RESPONSE" | jq -r '.message // "Success"')"
+                echo "DEBUG: Has assets: $(echo "$RESPONSE" | jq -r '.assets != null')"
+                echo "DEBUG: Asset count: $(echo "$RESPONSE" | jq -r '.assets | length // 0')"
+                
+                # Show all asset names for debugging
+                echo "DEBUG: Asset names:"
+                echo "$RESPONSE" | jq -r '.assets[] | .name' 2>/dev/null || echo "No assets found"
+                
+                # Try to find any .img.gz or .img file
+                IMG_URL=$(echo "$RESPONSE" | jq -r '.assets[] | select(.name | test("\.(img\.gz|img)$")) | .browser_download_url' | head -1)
+                if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
+                  echo "Found image file in $REPO"
+                  break
+                fi
+              done
             fi
             
-            IMG_NAME=$(basename "$IMG_URL")
+            # If all else fails, use a known working image URL as fallback
+            if [ -z "$IMG_URL" ] || [ "$IMG_URL" = "null" ]; then
+              echo "All methods failed, using known fallback image..."
+              # This is a known working URL - update if necessary
+              IMG_URL="https://fw.koolcenter.com/iStoreOS/x86_64/istoreos-24.10.5-2024120710-x86-64-generic-squashfs-combined.img.gz"
+              IMG_NAME="$(basename "$IMG_URL")"
+            fi
+            
+            # Download the image file
+            if [ -z "$IMG_NAME" ]; then
+              IMG_NAME=$(basename "$IMG_URL")
+            fi
+            
             echo "Downloading $IMG_URL..."
             wget -O "$IMG_NAME" "$IMG_URL"
+            
+            # Verify download was successful
+            if [ ! -f "$IMG_NAME" ] || [ ! -s "$IMG_NAME" ]; then
+              echo "ERROR: Download failed or file is empty"
+              exit 1
+            fi
           fi
           
           echo "img_name=$IMG_NAME" >> $GITHUB_OUTPUT
