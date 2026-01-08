@@ -33,22 +33,39 @@ jobs:
             IMG_NAME=$(ls -t *.img.gz | head -1)
             echo "Found local .img.gz file: $IMG_NAME"
           else
-            # Fallback to downloading from iStoreOS official releases
-            echo "No local .img.gz files found, downloading from official releases..."
+            # Fallback to downloading from iStoreOS official repository
+            echo "No local .img.gz files found, downloading from official repository..."
             
-            # iStoreOS official repository (adjust to correct repo if needed)
-            OFFICIAL_REPO="istoreos/istoreos"
-            OFFICIAL_API_URL="https://api.github.com/repos/$OFFICIAL_REPO/releases/latest"
+            # Try multiple iStoreOS repositories known to have releases
+            REPOS=("istoreos/istoreos" "carstene1ns/istoreos" "ophub/istoreos")
+            IMG_URL=""
             
-            # Use GitHub token for authentication to avoid rate limits
-            IMG_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$OFFICIAL_API_URL" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url')
+            for REPO in "${REPOS[@]}"; do
+              echo "Trying $REPO..."
+              API_URL="https://api.github.com/repos/$REPO/releases/latest"
+              
+              # Use GitHub token for authentication to avoid rate limits
+              RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$API_URL")
+              
+              # Check if response is valid JSON and has assets
+              if echo "$RESPONSE" | jq -e '.assets' > /dev/null 2>&1; then
+                IMG_URL=$(echo "$RESPONSE" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url' | head -1)
+                if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
+                  echo "Found .img.gz file in $REPO"
+                  break
+                fi
+              else
+                echo "No valid assets found in $REPO"
+              fi
+            done
             
             if [ -z "$IMG_URL" ] || [ "$IMG_URL" = "null" ]; then
-              echo "No .img.gz file found in latest release of $OFFICIAL_REPO"
+              echo "ERROR: No .img.gz file found in any of the repositories"
               exit 1
             fi
             
             IMG_NAME=$(basename "$IMG_URL")
+            echo "Downloading $IMG_URL..."
             wget -O "$IMG_NAME" "$IMG_URL"
           fi
           
