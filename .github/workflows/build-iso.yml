@@ -149,15 +149,36 @@ jobs:
           path: ${{ steps.download.outputs.iso_name }}
           retention-days: 90
       
-      - name: Release ISO file
+      - name: Get latest release
+        if: steps.convert.outcome == 'success'
+        id: get-latest-release
+        run: |
+          REPO_FULL="${{ github.repository }}"
+          API_URL="https://api.github.com/repos/$REPO_FULL/releases/latest"
+          
+          # 获取最新Release信息
+          LATEST_RELEASE=$(curl -s "$API_URL")
+          
+          # 提取Release标签
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+          RELEASE_ID=$(echo "$LATEST_RELEASE" | jq -r '.id')
+          
+          echo "Latest release tag: $TAG_NAME"
+          echo "Latest release ID: $RELEASE_ID"
+          
+          # 输出到GitHub Actions变量
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload ISO to latest release
         if: steps.convert.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.download.outputs.iso_name }}
-          name: ${{ steps.download.outputs.iso_name }}
-          body: "iStoreOS ISO built from ${{ steps.download.outputs.img_name }}"
+          tag_name: ${{ steps.get-latest-release.outputs.tag_name }}
           files: ${{ steps.download.outputs.iso_name }}
-          draft: false
-          prerelease: false
+          append_body: true
+          body: "Added ISO file: ${{ steps.download.outputs.iso_name }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
