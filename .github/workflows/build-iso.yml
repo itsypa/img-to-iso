@@ -32,9 +32,15 @@ jobs:
           API_URL="https://api.github.com/repos/$REPO_FULL/releases/latest"
           echo "Using API URL: $API_URL"
           
-          # 获取最新Release
-          RELEASE_RESPONSE=$(curl -s "$API_URL")
+          # 获取最新Release，使用GITHUB_TOKEN进行认证，提高速率限制
+          RELEASE_RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$API_URL")
           echo "Release response: $RELEASE_RESPONSE"
+          
+          # 检查是否有速率限制错误
+          if echo "$RELEASE_RESPONSE" | grep -q "API rate limit exceeded"; then
+            echo "Error: API rate limit exceeded, but this should not happen with authentication"
+            exit 1
+          fi
           
           # 查找img.gz文件
           IMG_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url')
