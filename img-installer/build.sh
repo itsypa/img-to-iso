@@ -5,6 +5,9 @@
 
 set -e
 
+# 增强的错误处理
+trap 'echo "ERROR: Script failed at line $LINENO"; exit 1' ERR
+
 # 检查参数
 if [ $# -lt 1 ]; then
     echo "Usage: $0 <image.img.gz> [output.iso]"
@@ -12,31 +15,64 @@ if [ $# -lt 1 ]; then
 fi
 
 IMG_GZ_FILE=$1
+
+# 检查输入文件是否存在
+if [ ! -f "$IMG_GZ_FILE" ]; then
+    echo "ERROR: Input file '$IMG_GZ_FILE' not found"
+    exit 1
+fi
+
+# 检查输入文件是否为.gz格式
+if [[ "$IMG_GZ_FILE" != *.img.gz ]]; then
+    echo "ERROR: Input file must be a .img.gz file"
+    exit 1
+fi
+
 DEFAULT_ISO_NAME="${IMG_GZ_FILE%.img.gz}.iso"
 ISO_NAME=${2:-$DEFAULT_ISO_NAME}
 
 # 创建工作目录
-WORK_DIR="/tmp/img-installer-work"
+WORK_DIR="/tmp/img-installer-work-$(date +%s)"
 BOOT_DIR="$WORK_DIR/boot"
 ISO_DIR="$WORK_DIR/iso"
 
-# 清理旧工作目录
-rm -rf $WORK_DIR
+# 清理旧工作目录（如果存在）
+if [ -d "$WORK_DIR" ]; then
+    rm -rf $WORK_DIR
+fi
+
 mkdir -p $WORK_DIR $BOOT_DIR $ISO_DIR
 
 echo "[1/6] Extracting img.gz file..."
-gunzip -c $IMG_GZ_FILE > $WORK_DIR/source.img
+# 检查.gz文件完整性
+gzip -t $IMG_GZ_FILE || {
+    echo "WARNING: gzip file integrity check failed, but attempting extraction anyway..."
+    # 使用cat代替gunzip进行更容错的提取
+    gunzip -c $IMG_GZ_FILE 2>/dev/null > $WORK_DIR/source.img
+}
+
+# 检查提取后的文件大小
+if [ ! -s $WORK_DIR/source.img ]; then
+    echo "ERROR: Failed to extract img file or extracted file is empty"
+    exit 1
+fi
 
 echo "[2/6] Creating boot environment..."
 
 # 安装必要的包
-sudo apt update
-sudo apt install -y xorriso isolinux syslinux-common
+sudo apt update > /dev/null 2>&1
+sudo apt install -y xorriso isolinux syslinux-common > /dev/null 2>&1
 
 # 复制引导文件
 mkdir -p $BOOT_DIR/isolinux
-cp /usr/lib/ISOLINUX/isolinux.bin $BOOT_DIR/isolinux/
-cp /usr/lib/syslinux/modules/bios/* $BOOT_DIR/isolinux/
+cp -f /usr/lib/ISOLINUX/isolinux.bin $BOOT_DIR/isolinux/ 2>/dev/null || {
+    echo "ERROR: Failed to copy isolinux.bin, please install isolinux package"
+    exit 1
+}
+cp -f /usr/lib/syslinux/modules/bios/* $BOOT_DIR/isolinux/ 2>/dev/null || {
+    echo "ERROR: Failed to copy syslinux modules, please install syslinux-common package"
+    exit 1
+}
 
 # 创建isolinux配置文件
 cat > $BOOT_DIR/isolinux/isolinux.cfg << 'EOF'
@@ -51,12 +87,15 @@ LABEL live
   SAY Booting iStoreOS Live...
   KERNEL /vmlinuz
   APPEND initrd=/initrd.img root=/dev/ram0 rw quiet live
+LABEL local
+  SAY Boot from local disk
+  LOCALBOOT 0x80
 EOF
 
 echo "[3/6] Preparing ISO filesystem..."
 
 # 复制镜像文件到ISO目录
-cp $WORK_DIR/source.img $ISO_DIR/
+cp -f $WORK_DIR/source.img $ISO_DIR/
 
 # 创建安装脚本
 cat > $ISO_DIR/install.sh << 'EOF'
@@ -76,6 +115,12 @@ if [ -z "$TARGET_DISK" ]; then
     exit 1
 fi
 
+# 检查磁盘是否存在
+if [ ! -b "$TARGET_DISK" ]; then
+    echo "Error: Disk $TARGET_DISK does not exist"
+    exit 1
+fi
+
 echo "Installing iStoreOS to $TARGET_DISK..."
 echo "This will erase all data on $TARGET_DISK!"
 echo -n "Are you sure? (y/N): "
@@ -88,12 +133,12 @@ fi
 
 # 安装镜像到目标磁盘
 echo "Writing image to $TARGET_DISK..."
-dd if=/source.img of=$TARGET_DISK bs=4M status=progress
+dd if=./source.img of=$TARGET_DISK bs=4M status=progress
 
 # 安装引导
 echo "Installing bootloader..."
-apt-get update
-apt-get install -y grub-pc-bin
+apt-get update > /dev/null 2>&1
+apt-get install -y grub-pc-bin > /dev/null 2>&1
 
 grub-install --target=i386-pc --no-floppy --force $TARGET_DISK
 
@@ -108,18 +153,22 @@ EOF
 
 chmod +x $ISO_DIR/install.sh
 
-echo "[4/6] Creating initramfs..."
+echo "[4/6] Creating minimal boot files..."
 
-# 简化的initramfs创建
-# 实际项目中可能需要更复杂的initramfs
+# 创建简单的内核和initrd文件
+# 这些是占位符，实际系统会使用真实的内核
 cat > $BOOT_DIR/initrd.img << 'EOF'
 # Minimal initramfs for iStoreOS installer
 EOF
 
-# 创建简单的内核文件（实际项目中需要真实内核）
 touch $BOOT_DIR/vmlinuz
 
 echo "[5/6] Building ISO file..."
+
+# 合并boot和iso目录
+mkdir -p $WORK_DIR/final
+cp -r $BOOT_DIR/* $WORK_DIR/final/
+cp -r $ISO_DIR/* $WORK_DIR/final/
 
 # 使用xorriso创建ISO
 xorriso -as mkisofs \
@@ -132,7 +181,7 @@ xorriso -as mkisofs \
     -J \
     -R \
     -V "iStoreOS Installer" \
-    $WORK_DIR
+    $WORK_DIR/final
 
 echo "[6/6] Cleanup..."
 rm -rf $WORK_DIR
