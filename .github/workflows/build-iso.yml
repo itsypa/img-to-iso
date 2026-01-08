@@ -104,7 +104,15 @@ jobs:
         run: |
           git clone https://github.com/wukongdaily/img-installer.git
           cd img-installer
-          git checkout main
+          # 检查并使用正确的分支名（main或master）
+          if git show-ref --verify --quiet refs/heads/main; then
+            git checkout main
+          elif git show-ref --verify --quiet refs/heads/master; then
+            git checkout master
+          else
+            # 如果都没有，使用当前HEAD
+            echo "Warning: Neither main nor master branch found, using current HEAD"
+          fi
       
       - name: Build installer ISO
         id: build-iso
