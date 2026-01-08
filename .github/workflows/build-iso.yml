@@ -1,4 +1,4 @@
-name: Build iStoreOS ISO from img.gz
+name: Build iStoreOS Installer ISO from img.gz
 
 on:
   push:
@@ -15,7 +15,7 @@ on:
 jobs:
   build-iso:
     runs-on: ubuntu-latest
-    name: Build iStoreOS ISO
+    name: Build iStoreOS Installer ISO
     
     steps:
       - name: Checkout repository
@@ -25,15 +25,17 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y \
-            live-build \
-            debootstrap \
-            squashfs-tools \
             xorriso \
-            qemu-utils \
+            isolinux \
             gzip \
             wget \
             curl \
-            jq
+            jq \
+            git \
+            make \
+            gcc \
+            libc6-dev \
+            mtools
       
       - name: Download img.gz from current repo latest release
         id: download
@@ -98,51 +100,37 @@ jobs:
           echo "Generated ISO name: $ISO_NAME"  # 调试信息
           echo "iso_name=$ISO_NAME" >> $GITHUB_OUTPUT
       
-      - name: Extract img file
-        id: extract
+      - name: Clone img-installer repository
         run: |
-          IMG_NAME=${{ steps.download.outputs.img_name }}
-          IMG_FILE="${IMG_NAME%.img.gz}.img"
-          
-          echo "Extracting $IMG_NAME to $IMG_FILE..."
-          
-          # 忽略gzip的警告，只检查解压结果
-          gunzip "$IMG_NAME" 2>&1 || {
-            echo "Warning: gzip returned non-zero exit code, checking if file was extracted successfully..."
-          }
-          
-          # 验证解压后的文件存在
-          if [ ! -f "$IMG_FILE" ]; then
-            echo "Error: Failed to extract $IMG_NAME, $IMG_FILE not found"
-            exit 1
-          fi
-          
-          echo "✓ Successfully extracted $IMG_FILE"
-          echo "File size: $(ls -lh $IMG_FILE)"
+          git clone https://github.com/wukongdaily/img-installer.git
+          cd img-installer
+          git checkout main
       
-      - name: Make conversion script executable
-        run: chmod +x convert.sh
-      
-      - name: Run conversion script
+      - name: Build installer ISO
+        id: build-iso
         run: |
           IMG_NAME=${{ steps.download.outputs.img_name }}
           ISO_NAME=${{ steps.download.outputs.iso_name }}
-          sudo ./convert.sh "${IMG_NAME%.img.gz}.img" "$ISO_NAME"
-        id: convert
-        continue-on-error: true
-      
-      - name: Upload build logs on failure
-        if: steps.convert.outcome != 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs-${{ steps.download.outputs.iso_name }}
-          path: |
-            /tmp/istoreos-iso-build/live-build/build.log
-            /tmp/istoreos-iso-build/live-build/config
-          retention-days: 90
+          
+          echo "Building installer ISO: $ISO_NAME from $IMG_NAME..."
+          
+          # 使用img-installer生成ISO
+          cd img-installer
+          
+          # 复制img.gz文件到img-installer目录
+          cp ../$IMG_NAME .
+          
+          # 运行img-installer构建脚本
+          chmod +x build.sh
+          ./build.sh $IMG_NAME $ISO_NAME
+          
+          # 复制生成的ISO到根目录
+          cp $ISO_NAME ../
+          
+          echo "✓ Successfully built ISO file: $ISO_NAME"
+          ls -la ../$ISO_NAME
       
       - name: Upload ISO artifact
-        if: steps.convert.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.download.outputs.iso_name }}
@@ -150,7 +138,6 @@ jobs:
           retention-days: 90
       
       - name: Verify ISO file exists
-        if: steps.convert.outcome == 'success'
         id: verify-iso
         run: |
           ISO_NAME=${{ steps.download.outputs.iso_name }}
@@ -159,81 +146,33 @@ jobs:
           if [ -f "$ISO_NAME" ]; then
             echo "✓ ISO file exists: $ISO_NAME"
             echo "iso_exists=true" >> $GITHUB_OUTPUT
+            # 检查文件大小
+            FILE_SIZE=$(stat -c%s "$ISO_NAME")
+            echo "✓ File size: $FILE_SIZE bytes"
+            # 检查文件类型
+            file "$ISO_NAME"
           else
             echo "✗ ISO file does not exist: $ISO_NAME" >&2
             echo "iso_exists=false" >> $GITHUB_OUTPUT
+            exit 1
           fi
       
-      - name: Get latest release information
-        if: steps.verify-iso.outputs.iso_exists == 'true'
-        id: get-latest-release
-        run: |
-          REPO_FULL="${{ github.repository }}"
-          API_URL="https://api.github.com/repos/$REPO_FULL/releases/latest"
-          
-          echo "Getting latest release from: $API_URL"
-          
-          # 使用授权访问API
-          LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$API_URL")
-          
-          echo "API Response: $LATEST_RELEASE"  # 调试输出
-          
-          # 检查是否有最新Release
-          if echo "$LATEST_RELEASE" | grep -q "Not Found"; then
-            echo "No existing release found, will create a new one"
-            echo "has_release=false" >> $GITHUB_OUTPUT
-          else
-            # 提取Release信息
-            TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
-            RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
-            
-            echo "Found latest release: $TAG_NAME ($RELEASE_NAME)"
-            echo "has_release=true" >> $GITHUB_OUTPUT
-            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-            echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Debug release parameters
-        if: steps.verify-iso.outputs.iso_exists == 'true'
-        run: |
-          echo "=== Release Parameters Debug ==="
-          echo "GitHub Repository: ${{ github.repository }}"
-          echo "GitHub Token exists: ${{ env.GITHUB_TOKEN != '' }}"
-          echo "ISO File: ${{ steps.download.outputs.iso_name }}"
-          echo "Has release: ${{ steps.get-latest-release.outputs.has_release }}"
-          echo "Tag name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.tag_name || format('v{0}', github.run_number) }}"
-          echo "Release name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.release_name || format('iStoreOS ISO Build {0}', github.run_number) }}"
-          echo "================================"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Create or update release with debug
+      - name: Create release with ISO file
         if: steps.verify-iso.outputs.iso_exists == 'true'
         id: release
-        continue-on-error: false
         uses: softprops/action-gh-release@v2
         with:
-          # 简化逻辑，直接使用当前构建编号创建新标签
-          tag_name: "iso-build-${{ github.run_number }}"
-          name: "iStoreOS ISO Build ${{ github.run_number }}"
+          tag_name: "installer-${{ github.run_number }}"
+          name: "iStoreOS Installer ISO ${{ github.run_number }}"
           body: |
-            iStoreOS ISO Build ${{ github.run_number }}
+            iStoreOS Installer ISO Build ${{ github.run_number }}
             
             - Generated ISO: ${{ steps.download.outputs.iso_name }}
             - Built from: ${{ steps.download.outputs.img_name }}
             - Build run: ${{ github.run_number }}
-            - Repository: ${{ github.repository }}
+            - Type: Installer ISO
           files: ${{ steps.download.outputs.iso_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Post-release debug
-        if: always()
-        run: |
-          echo "=== Post-Release Debug ==="
-          echo "Release step outcome: ${{ steps.release.outcome }}"
-          echo "Release step conclusion: ${{ steps.release.conclusion }}"
-          echo "================================"
