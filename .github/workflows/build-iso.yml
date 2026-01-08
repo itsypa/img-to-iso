@@ -120,11 +120,21 @@ jobs:
           echo "img_name=$IMG_NAME" >> $GITHUB_OUTPUT
           echo "iso_name=${IMG_NAME%.img.gz}.iso" >> $GITHUB_OUTPUT
 
-      - name: Build ISO using img-installer script
+      - name: Build optimized ISO using img-installer script
         id: build
         run: |
           chmod +x ./img-installer/build.sh
-          ./img-installer/build.sh ${{ steps.download.outputs.img_name }} ${{ steps.download.outputs.iso_name }}
+          
+          # 获取img.gz文件的URL或本地路径
+          if [[ "${{ steps.download.outputs.img_name }}" =~ ^http ]]; then
+            IMG_SOURCE="${{ steps.download.outputs.img_name }}"
+          else
+            # 如果是本地文件，获取完整路径
+            IMG_SOURCE="$(pwd)/${{ steps.download.outputs.img_name }}"
+          fi
+          
+          # 使用新的构建脚本，只包含安装程序，不包含完整img文件
+          ./img-installer/build.sh "$IMG_SOURCE" ${{ steps.download.outputs.iso_name }}
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
