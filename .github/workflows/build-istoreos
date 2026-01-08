@@ -22,7 +22,7 @@ jobs:
             echo "错误：未找到istoreos镜像文件"
             exit 1
           fi
-          # 提取版本号和日期，例如：istoreos-24.10.1-2025060614-x86-64-squashfs-combined-efi.img.gz -> 24.10.1-2025060614
+          # 提取版本号和日期
           VERSION=$(echo "$FILE_NAME" | grep -oP 'istoreos-\K[^-]+-[0-9]+')
           # 设置环境变量
           echo "VERSION=$VERSION" >> $GITHUB_ENV
