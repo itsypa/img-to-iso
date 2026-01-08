@@ -1,9 +1,7 @@
-name: Build iStoreOS Installer ISO from img.gz
+name: Build iStoreOS Installer ISO
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
   workflow_dispatch:
     inputs:
@@ -15,315 +13,70 @@ on:
 jobs:
   build-iso:
     runs-on: ubuntu-latest
-    name: Build iStoreOS Installer ISO
-    
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Set up build environment
+
+      - name: Setup environment
         run: |
           sudo apt update
-          sudo apt install -y \
-            xorriso \
-            isolinux \
-            gzip \
-            wget \
-            curl \
-            jq \
-            git \
-            make \
-            gcc \
-            libc6-dev \
-            mtools
-      
-      - name: Download img.gz from current repo latest release
+          sudo apt install -y xorriso isolinux gzip wget curl jq
+
+      - name: Download latest iStoreOS img.gz
         id: download
         run: |
-          # 获取当前仓库信息（更可靠的方式）
-          REPO_FULL="${{ github.repository }}"  # 格式：owner/name
-          REPO_OWNER=$(echo "$REPO_FULL" | cut -d'/' -f1)
-          REPO_NAME=$(echo "$REPO_FULL" | cut -d'/' -f2)
-          
-          echo "Using repository: $REPO_FULL"  # 调试信息
-          echo "Owner: $REPO_OWNER"  # 调试信息
-          echo "Name: $REPO_NAME"  # 调试信息
-          
-          # 使用GitHub API获取当前仓库最新Release的资产
-          API_URL="https://api.github.com/repos/$REPO_FULL/releases/latest"
-          echo "API URL: $API_URL"  # 调试信息
-          
-          # 调用API并检查响应
-          LATEST_RELEASE=$(curl -s -w "\n%{http_code}\n" "$API_URL")
-          HTTP_CODE=$(echo "$LATEST_RELEASE" | tail -n 1)
-          LATEST_RELEASE=$(echo "$LATEST_RELEASE" | head -n -1)
-          
-          echo "HTTP Status: $HTTP_CODE"  # 调试信息
-          echo "API Response: $LATEST_RELEASE"  # 调试信息
-          
-          # 检查HTTP状态码
-          if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "Error: Failed to get latest release, HTTP status: $HTTP_CODE" >&2
-            exit 1
-          fi
-          
-          # 查找img.gz文件
-          IMG_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url')
-          
-          echo "Found IMG URL: $IMG_URL"  # 调试信息
+          # 获取最新Release
+          REPO_FULL="${{ github.repository }}"
+          IMG_URL=$(curl -s "https://api.github.com/repos/$REPO_FULL/releases/latest" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url')
           
           if [ -z "$IMG_URL" ] || [ "$IMG_URL" = "null" ]; then
-            echo "Error: No .img.gz file found in latest release" >&2
+            echo "No .img.gz file found in latest release"
             exit 1
           fi
-          
-          IMG_NAME=$(basename "$IMG_URL")
-          echo "Downloading: $IMG_NAME"  # 调试信息
           
           # 下载文件
-          wget -v -O "$IMG_NAME" "$IMG_URL" || {
-            echo "Error: Failed to download file" >&2
-            exit 2
-          }
+          IMG_NAME=$(basename "$IMG_URL")
+          wget -O "$IMG_NAME" "$IMG_URL"
           
-          # 验证文件存在
-          if [ ! -f "$IMG_NAME" ]; then
-            echo "Error: File $IMG_NAME not found after download" >&2
-            exit 2
-          fi
-          
-          echo "Downloaded file: $(ls -la $IMG_NAME)"  # 调试信息
-          
+          # 设置输出变量
           echo "img_name=$IMG_NAME" >> $GITHUB_OUTPUT
-          # 生成对应的ISO文件名
-          ISO_NAME="${IMG_NAME%.img.gz}.iso"
-          echo "Generated ISO name: $ISO_NAME"  # 调试信息
-          echo "iso_name=$ISO_NAME" >> $GITHUB_OUTPUT
-      
-      - name: Create img-installer directory and build script
-        run: |
-          # 创建img-installer目录
-          mkdir -p ./img-installer
-          
-          # 创建build.sh脚本
-          cat > ./img-installer/build.sh << 'EOF'
-#!/bin/bash
+          echo "iso_name=${IMG_NAME%.img.gz}.iso" >> $GITHUB_OUTPUT
 
-# img-installer build script
-# 基于wukongdaily/img-installer项目
-
-set -e
-
-# 检查参数
-if [ $# -lt 1 ]; then
-    echo "Usage: $0 <image.img.gz> [output.iso]"
-    exit 1
-fi
-
-IMG_GZ_FILE=$1
-DEFAULT_ISO_NAME="${IMG_GZ_FILE%.img.gz}.iso"
-ISO_NAME=${2:-$DEFAULT_ISO_NAME}
-
-# 创建工作目录
-WORK_DIR="/tmp/img-installer-work"
-BOOT_DIR="$WORK_DIR/boot"
-ISO_DIR="$WORK_DIR/iso"
-
-# 清理旧工作目录
-rm -rf $WORK_DIR
-mkdir -p $WORK_DIR $BOOT_DIR $ISO_DIR
-
-echo "[1/6] Extracting img.gz file..."
-# 忽略gzip的警告，只检查解压结果
-if gunzip -c $IMG_GZ_FILE > $WORK_DIR/source.img 2>&1; then
-    echo "✓ Successfully extracted img file"
-elif [ -f $WORK_DIR/source.img ]; then
-    echo "✓ Successfully extracted img file (ignoring gzip warnings)"
-else
-    echo "Error: Failed to extract img.gz file" >&2
-    exit 1
-fi
-
-echo "[2/6] Creating boot environment..."
-
-# 安装必要的包
-sudo apt update
-sudo apt install -y xorriso isolinux syslinux-common
-
-# 复制引导文件
-mkdir -p $BOOT_DIR/isolinux
-cp /usr/lib/ISOLINUX/isolinux.bin $BOOT_DIR/isolinux/
-cp /usr/lib/syslinux/modules/bios/* $BOOT_DIR/isolinux/
-
-# 创建isolinux配置文件
-cat > $BOOT_DIR/isolinux/isolinux.cfg << 'BOOTEOF'
-SERIAL 0 115200
-
-DEFAULT install
-LABEL install
-  SAY Installing iStoreOS...
-  KERNEL /vmlinuz
-  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet
-LABEL live
-  SAY Booting iStoreOS Live...
-  KERNEL /vmlinuz
-  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet live
-BOOTEOF
-
-echo "[3/6] Preparing ISO filesystem..."
-
-# 复制镜像文件到ISO目录
-cp $WORK_DIR/source.img $ISO_DIR/
-
-# 创建安装脚本
-cat > $ISO_DIR/install.sh << 'INSTALLEOF'
-#!/bin/bash
-
-echo "=== iStoreOS Installer ==="
-echo "Detecting disks..."
-
-# 列出可用磁盘
-lsblk -d -o NAME,SIZE,TYPE
-
-echo -n "Enter disk to install (e.g., /dev/sda): "
-read TARGET_DISK
-
-if [ -z "$TARGET_DISK" ]; then
-    echo "Error: No disk specified"
-    exit 1
-fi
-
-echo "Installing iStoreOS to $TARGET_DISK..."
-echo "This will erase all data on $TARGET_DISK!"
-echo -n "Are you sure? (y/N): "
-read CONFIRM
-
-if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
-    echo "Installation cancelled"
-    exit 0
-fi
-
-# 安装镜像到目标磁盘
-echo "Writing image to $TARGET_DISK..."
-dd if=/source.img of=$TARGET_DISK bs=4M status=progress
-
-# 安装引导
-echo "Installing bootloader..."
-apt-get update
-apt-get install -y grub-pc-bin
-
-grub-install --target=i386-pc --no-floppy --force $TARGET_DISK
-
-# 更新grub配置
-echo "Updating GRUB configuration..."
-update-grub
-
-echo "=== Installation Complete ==="
-echo "iStoreOS has been installed to $TARGET_DISK"
-echo "Please reboot your system"
-INSTALLEOF
-
-chmod +x $ISO_DIR/install.sh
-
-echo "[4/6] Creating initramfs..."
-
-# 简化的initramfs创建
-# 实际项目中可能需要更复杂的initramfs
-cat > $BOOT_DIR/initrd.img << 'INITRAMFSEOF'
-# Minimal initramfs for iStoreOS installer
-INITRAMFSEOF
-
-# 创建简单的内核文件（实际项目中需要真实内核）
-touch $BOOT_DIR/vmlinuz
-
-echo "[5/6] Building ISO file..."
-
-# 使用xorriso创建ISO
-xorriso -as mkisofs \
-    -o $ISO_NAME \
-    -b isolinux/isolinux.bin \
-    -c isolinux/boot.cat \
-    -no-emul-boot \
-    -boot-load-size 4 \
-    -boot-info-table \
-    -J \
-    -R \
-    -V "iStoreOS Installer" \
-    $WORK_DIR
-
-echo "[6/6] Cleanup..."
-rm -rf $WORK_DIR
-
-echo "✓ ISO file created: $ISO_NAME"
-echo "✓ Installation complete!"
-EOF
-          
-          # 确保脚本有执行权限
-          chmod +x ./img-installer/build.sh
-      
-      - name: Build installer ISO
-        id: build-iso
+      - name: Create simple ISO
+        id: build
         run: |
           IMG_NAME=${{ steps.download.outputs.img_name }}
-          EXPECTED_ISO_NAME=${{ steps.download.outputs.iso_name }}
-          
-          echo "Building installer ISO: $EXPECTED_ISO_NAME from $IMG_NAME..."
-          
-          # 运行本地的img-installer构建脚本
-          ./img-installer/build.sh "$IMG_NAME" "$EXPECTED_ISO_NAME"
-          
-          # 验证生成的ISO文件
-          if [ -f "$EXPECTED_ISO_NAME" ]; then
-            echo "✓ Successfully built ISO file: $EXPECTED_ISO_NAME"
-            ls -la "$EXPECTED_ISO_NAME"
-          else
-            echo "Error: ISO file $EXPECTED_ISO_NAME not found" >&2
-            exit 1
-          fi
-      
-      - name: Upload ISO artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.download.outputs.iso_name }}
-          path: ${{ steps.download.outputs.iso_name }}
-          retention-days: 90
-      
-      - name: Verify ISO file exists
-        id: verify-iso
-        run: |
           ISO_NAME=${{ steps.download.outputs.iso_name }}
-          echo "Checking if $ISO_NAME exists..."
-          ls -la "$ISO_NAME"
-          if [ -f "$ISO_NAME" ]; then
-            echo "✓ ISO file exists: $ISO_NAME"
-            echo "iso_exists=true" >> $GITHUB_OUTPUT
-            # 检查文件大小
-            FILE_SIZE=$(stat -c%s "$ISO_NAME")
-            echo "✓ File size: $FILE_SIZE bytes"
-            # 检查文件类型
-            file "$ISO_NAME"
-          else
-            echo "✗ ISO file does not exist: $ISO_NAME" >&2
-            echo "iso_exists=false" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-      
-      - name: Create release with ISO file
-        if: steps.verify-iso.outputs.iso_exists == 'true'
-        id: release
+          
+          # 创建必要目录
+          mkdir -p iso/boot/isolinux
+          
+          # 复制引导文件
+          cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/isolinux/
+          cp /usr/lib/syslinux/modules/bios/* iso/boot/isolinux/
+          
+          # 创建isolinux配置
+          cat > iso/boot/isolinux/isolinux.cfg << 'EOF'
+          DEFAULT install
+          LABEL install
+            SAY Installing iStoreOS...
+            KERNEL /vmlinuz
+            APPEND initrd=/initrd.img root=/dev/ram0 rw
+          EOF
+          
+          # 创建空的内核和initrd文件
+          touch iso/vmlinuz iso/initrd.img
+          
+          # 复制img文件
+          gunzip -c $IMG_NAME > iso/source.img
+          
+          # 构建ISO
+          xorriso -as mkisofs -o $ISO_NAME -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table iso/
+
+      - name: Upload ISO to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "installer-${{ github.run_number }}"
-          name: "iStoreOS Installer ISO ${{ github.run_number }}"
-          body: |
-            iStoreOS Installer ISO Build ${{ github.run_number }}
-            
-            - Generated ISO: ${{ steps.download.outputs.iso_name }}
-            - Built from: ${{ steps.download.outputs.img_name }}
-            - Build run: ${{ github.run_number }}
-            - Type: Installer ISO
+          tag_name: "iso-build-${{ github.run_number }}"
           files: ${{ steps.download.outputs.iso_name }}
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
