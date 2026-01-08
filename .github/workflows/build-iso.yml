@@ -58,26 +58,19 @@ jobs:
           echo "  SAY Installing iStoreOS..." >> iso/boot/isolinux/isolinux.cfg
           echo "  KERNEL /vmlinuz" >> iso/boot/isolinux/isolinux.cfg
           echo "  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet" >> iso/boot/isolinux/isolinux.cfg
-          echo "LABEL live" >> iso/boot/isolinux/isolinux.cfg
-          echo "  SAY Booting iStoreOS Live..." >> iso/boot/isolinux/isolinux.cfg
-          echo "  KERNEL /vmlinuz" >> iso/boot/isolinux/isolinux.cfg
-          echo "  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet live" >> iso/boot/isolinux/isolinux.cfg
 
       - name: Create kernel and initrd files
         run: |
           touch iso/vmlinuz iso/initrd.img
 
-      - name: Extract img.gz file
+      - name: Copy original img.gz to ISO
         run: |
           IMG_NAME=${{ steps.download.outputs.img_name }}
-          gunzip -c $IMG_NAME > iso/source.img 2>/dev/null || true
-          if [ ! -f iso/source.img ] || [ ! -s iso/source.img ]; then
-            echo "Failed to extract img file"
-            exit 1
-          fi
+          cp "$IMG_NAME" iso/
 
-      - name: Create install script
+      - name: Create optimized install script
         run: |
+          IMG_NAME=${{ steps.download.outputs.img_name }}
           echo "#!/bin/bash" > iso/install.sh
           echo "" >> iso/install.sh
           echo "echo '=== iStoreOS Installer ==='" >> iso/install.sh
@@ -85,7 +78,7 @@ jobs:
           echo "lsblk -d -o NAME,SIZE,TYPE" >> iso/install.sh
           echo "echo -n 'Enter disk to install (e.g., /dev/sda): '" >> iso/install.sh
           echo "read TARGET_DISK" >> iso/install.sh
-          echo "if [ -z \"$TARGET_DISK\" ]; then" >> iso/install.sh
+          echo "if [ -z \\\"$TARGET_DISK\\\" ]; then" >> iso/install.sh
           echo "    echo 'Error: No disk specified'" >> iso/install.sh
           echo "    exit 1" >> iso/install.sh
           echo "fi" >> iso/install.sh
@@ -93,12 +86,12 @@ jobs:
           echo "echo 'This will erase all data on $TARGET_DISK!'" >> iso/install.sh
           echo "echo -n 'Are you sure? (y/N): '" >> iso/install.sh
           echo "read CONFIRM" >> iso/install.sh
-          echo "if [ \"$CONFIRM\" != \"y\" ] && [ \"$CONFIRM\" != \"Y\" ]; then" >> iso/install.sh
+          echo "if [ \\\"$CONFIRM\\\" != \\\"y\\\" ] && [ \\\"$CONFIRM\\\" != \\\"Y\\\" ]; then" >> iso/install.sh
           echo "    echo 'Installation cancelled'" >> iso/install.sh
           echo "    exit 0" >> iso/install.sh
           echo "fi" >> iso/install.sh
           echo "echo 'Writing image to $TARGET_DISK...'" >> iso/install.sh
-          echo "dd if=/source.img of=$TARGET_DISK bs=4M status=progress" >> iso/install.sh
+          echo "gunzip -c /$IMG_NAME | dd of=$TARGET_DISK bs=4M status=progress" >> iso/install.sh
           echo "echo 'Installing bootloader...'" >> iso/install.sh
           echo "grub-install --target=i386-pc --no-floppy --force $TARGET_DISK" >> iso/install.sh
           echo "echo 'Updating GRUB configuration...'" >> iso/install.sh
@@ -108,20 +101,25 @@ jobs:
           echo "echo 'Please reboot your system'" >> iso/install.sh
           chmod +x iso/install.sh
 
-      - name: Build ISO file
+      - name: Build compressed ISO
         id: build
         run: |
           ISO_NAME=${{ steps.download.outputs.iso_name }}
-          xorriso -as mkisofs -o $ISO_NAME -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -J -R -V "iStoreOS Installer" iso/
+          # 使用压缩选项构建ISO
+          xorriso -as mkisofs -o $ISO_NAME \
+            -b boot/isolinux/isolinux.bin \
+            -c boot/isolinux/boot.cat \
+            -no-emul-boot \
+            -boot-load-size 4 \
+            -boot-info-table \
+            -J \
+            -R \
+            -V "iStoreOS Installer" \
+            -input-charset utf-8 \
+            -graft-points \
+            iso/
 
-      - name: Upload ISO to GitHub Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.download.outputs.iso_name }}
-          path: ${{ steps.download.outputs.iso_name }}
-          retention-days: 90
-
-      - name: Create Release with Artifacts link
+      - name: Upload ISO to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "iso-build-${{ github.run_number }}"
@@ -131,11 +129,6 @@ jobs:
             - Generated ISO: ${{ steps.download.outputs.iso_name }}
             - Built from: ${{ steps.download.outputs.img_name }}
             - Build run: ${{ github.run_number }}
-            
-            **Download ISO from Artifacts:**
-            - Click the "Actions" tab
-            - Select this workflow run
-            - Scroll down to "Artifacts" section
-            - Download the ISO file
+          files: ${{ steps.download.outputs.iso_name }}
           draft: false
           prerelease: false
