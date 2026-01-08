@@ -99,9 +99,26 @@ jobs:
           echo "iso_name=$ISO_NAME" >> $GITHUB_OUTPUT
       
       - name: Extract img file
+        id: extract
         run: |
           IMG_NAME=${{ steps.download.outputs.img_name }}
-          gunzip "$IMG_NAME"
+          IMG_FILE="${IMG_NAME%.img.gz}.img"
+          
+          echo "Extracting $IMG_NAME to $IMG_FILE..."
+          
+          # 忽略gzip的警告，只检查解压结果
+          gunzip "$IMG_NAME" 2>&1 || {
+            echo "Warning: gzip returned non-zero exit code, checking if file was extracted successfully..."
+          }
+          
+          # 验证解压后的文件存在
+          if [ ! -f "$IMG_FILE" ]; then
+            echo "Error: Failed to extract $IMG_NAME, $IMG_FILE not found"
+            exit 1
+          fi
+          
+          echo "✓ Successfully extracted $IMG_FILE"
+          echo "File size: $(ls -lh $IMG_FILE)"
       
       - name: Make conversion script executable
         run: chmod +x convert.sh
