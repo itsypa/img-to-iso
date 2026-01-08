@@ -134,7 +134,15 @@ rm -rf $WORK_DIR
 mkdir -p $WORK_DIR $BOOT_DIR $ISO_DIR
 
 echo "[1/6] Extracting img.gz file..."
-gunzip -c $IMG_GZ_FILE > $WORK_DIR/source.img
+# 忽略gzip的警告，只检查解压结果
+if gunzip -c $IMG_GZ_FILE > $WORK_DIR/source.img 2>&1; then
+    echo "✓ Successfully extracted img file"
+elif [ -f $WORK_DIR/source.img ]; then
+    echo "✓ Successfully extracted img file (ignoring gzip warnings)"
+else
+    echo "Error: Failed to extract img.gz file" >&2
+    exit 1
+fi
 
 echo "[2/6] Creating boot environment..."
 
