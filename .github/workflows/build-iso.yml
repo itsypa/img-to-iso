@@ -28,7 +28,6 @@ jobs:
       - name: Download latest iStoreOS img.gz
         id: download
         run: |
-          # 获取最新Release
           REPO_FULL="${{ github.repository }}"
           API_URL="https://api.github.com/repos/$REPO_FULL/releases/latest"
           IMG_URL=$(curl -s "$API_URL" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url')
@@ -38,115 +37,82 @@ jobs:
             exit 1
           fi
           
-          # 下载文件
           IMG_NAME=$(basename "$IMG_URL")
           wget -O "$IMG_NAME" "$IMG_URL"
           
-          # 设置输出变量
           echo "img_name=$IMG_NAME" >> $GITHUB_OUTPUT
           echo "iso_name=${IMG_NAME%.img.gz}.iso" >> $GITHUB_OUTPUT
 
-      - name: Create simple ISO
-        id: build
+      - name: Create ISO directory structure
         run: |
-          IMG_NAME=${{ steps.download.outputs.img_name }}
-          ISO_NAME=${{ steps.download.outputs.iso_name }}
-          
-          # 创建必要目录结构
           mkdir -p iso/boot/isolinux
-          
-          # 复制引导文件
           cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/isolinux/
           cp /usr/lib/syslinux/modules/bios/* iso/boot/isolinux/
-          
-          # 创建isolinux配置
-          cat > iso/boot/isolinux/isolinux.cfg << 'BOOTEOF'
-SERIAL 0 115200
 
-DEFAULT install
-LABEL install
-  SAY Installing iStoreOS...
-  KERNEL /vmlinuz
-  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet
-LABEL live
-  SAY Booting iStoreOS Live...
-  KERNEL /vmlinuz
-  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet live
-BOOTEOF
-          
-          # 创建空的内核和initrd文件
+      - name: Create isolinux configuration
+        run: |
+          echo "SERIAL 0 115200" > iso/boot/isolinux/isolinux.cfg
+          echo "" >> iso/boot/isolinux/isolinux.cfg
+          echo "DEFAULT install" >> iso/boot/isolinux/isolinux.cfg
+          echo "LABEL install" >> iso/boot/isolinux/isolinux.cfg
+          echo "  SAY Installing iStoreOS..." >> iso/boot/isolinux/isolinux.cfg
+          echo "  KERNEL /vmlinuz" >> iso/boot/isolinux/isolinux.cfg
+          echo "  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet" >> iso/boot/isolinux/isolinux.cfg
+          echo "LABEL live" >> iso/boot/isolinux/isolinux.cfg
+          echo "  SAY Booting iStoreOS Live..." >> iso/boot/isolinux/isolinux.cfg
+          echo "  KERNEL /vmlinuz" >> iso/boot/isolinux/isolinux.cfg
+          echo "  APPEND initrd=/initrd.img root=/dev/ram0 rw quiet live" >> iso/boot/isolinux/isolinux.cfg
+
+      - name: Create kernel and initrd files
+        run: |
           touch iso/vmlinuz iso/initrd.img
-          
-          # 解压img.gz文件（忽略gzip警告）
-          echo "Extracting img.gz file..."
+
+      - name: Extract img.gz file
+        run: |
+          IMG_NAME=${{ steps.download.outputs.img_name }}
           gunzip -c $IMG_NAME > iso/source.img 2>/dev/null || true
-          
-          # 检查解压结果
           if [ ! -f iso/source.img ] || [ ! -s iso/source.img ]; then
             echo "Failed to extract img file"
             exit 1
           fi
-          
-          # 创建简单的安装脚本
-          cat > iso/install.sh << 'INSTALLEOF'
-#!/bin/bash
 
-echo "=== iStoreOS Installer ==="
-echo "Detecting disks..."
-
-# 列出可用磁盘
-lsblk -d -o NAME,SIZE,TYPE
-
-echo -n "Enter disk to install (e.g., /dev/sda): "
-read TARGET_DISK
-
-if [ -z "$TARGET_DISK" ]; then
-    echo "Error: No disk specified"
-    exit 1
-fi
-
-echo "Installing iStoreOS to $TARGET_DISK..."
-echo "This will erase all data on $TARGET_DISK!"
-echo -n "Are you sure? (y/N): "
-read CONFIRM
-
-if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
-    echo "Installation cancelled"
-    exit 0
-fi
-
-# 安装镜像到目标磁盘
-echo "Writing image to $TARGET_DISK..."
-dd if=/source.img of=$TARGET_DISK bs=4M status=progress
-
-# 安装引导
-echo "Installing bootloader..."
-grub-install --target=i386-pc --no-floppy --force $TARGET_DISK
-
-# 更新grub配置
-echo "Updating GRUB configuration..."
-update-grub
-
-echo "=== Installation Complete ==="
-echo "iStoreOS has been installed to $TARGET_DISK"
-echo "Please reboot your system"
-INSTALLEOF
-          
+      - name: Create install script
+        run: |
+          echo "#!/bin/bash" > iso/install.sh
+          echo "" >> iso/install.sh
+          echo "echo '=== iStoreOS Installer ==='" >> iso/install.sh
+          echo "echo 'Detecting disks...'" >> iso/install.sh
+          echo "lsblk -d -o NAME,SIZE,TYPE" >> iso/install.sh
+          echo "echo -n 'Enter disk to install (e.g., /dev/sda): '" >> iso/install.sh
+          echo "read TARGET_DISK" >> iso/install.sh
+          echo "if [ -z \"$TARGET_DISK\" ]; then" >> iso/install.sh
+          echo "    echo 'Error: No disk specified'" >> iso/install.sh
+          echo "    exit 1" >> iso/install.sh
+          echo "fi" >> iso/install.sh
+          echo "echo 'Installing iStoreOS to $TARGET_DISK...'" >> iso/install.sh
+          echo "echo 'This will erase all data on $TARGET_DISK!'" >> iso/install.sh
+          echo "echo -n 'Are you sure? (y/N): '" >> iso/install.sh
+          echo "read CONFIRM" >> iso/install.sh
+          echo "if [ \"$CONFIRM\" != \"y\" ] && [ \"$CONFIRM\" != \"Y\" ]; then" >> iso/install.sh
+          echo "    echo 'Installation cancelled'" >> iso/install.sh
+          echo "    exit 0" >> iso/install.sh
+          echo "fi" >> iso/install.sh
+          echo "echo 'Writing image to $TARGET_DISK...'" >> iso/install.sh
+          echo "dd if=/source.img of=$TARGET_DISK bs=4M status=progress" >> iso/install.sh
+          echo "echo 'Installing bootloader...'" >> iso/install.sh
+          echo "grub-install --target=i386-pc --no-floppy --force $TARGET_DISK" >> iso/install.sh
+          echo "echo 'Updating GRUB configuration...'" >> iso/install.sh
+          echo "update-grub" >> iso/install.sh
+          echo "echo '=== Installation Complete ==='" >> iso/install.sh
+          echo "echo 'iStoreOS has been installed to $TARGET_DISK'" >> iso/install.sh
+          echo "echo 'Please reboot your system'" >> iso/install.sh
           chmod +x iso/install.sh
-          
-          # 构建ISO
-          echo "Building ISO file..."
-          xorriso -as mkisofs \
-              -o $ISO_NAME \
-              -b boot/isolinux/isolinux.bin \
-              -c boot/isolinux/boot.cat \
-              -no-emul-boot \
-              -boot-load-size 4 \
-              -boot-info-table \
-              -J \
-              -R \
-              -V "iStoreOS Installer" \
-              iso/
+
+      - name: Build ISO file
+        id: build
+        run: |
+          ISO_NAME=${{ steps.download.outputs.iso_name }}
+          xorriso -as mkisofs -o $ISO_NAME -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -J -R -V "iStoreOS Installer" iso/
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
@@ -162,7 +128,6 @@ INSTALLEOF
           name: "iStoreOS Installer ISO ${{ github.run_number }}"
           body: |
             iStoreOS Installer ISO Build ${{ github.run_number }}
-            
             - Generated ISO: ${{ steps.download.outputs.iso_name }}
             - Built from: ${{ steps.download.outputs.img_name }}
             - Build run: ${{ github.run_number }}
