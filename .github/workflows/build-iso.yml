@@ -59,8 +59,21 @@ jobs:
       
       - name: Run conversion script
         run: sudo ./convert.sh isstoreos.img "${{ github.event.inputs.output_iso_name }}"
+        id: convert
+        continue-on-error: true
+      
+      - name: Upload build logs on failure
+        if: steps.convert.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            /tmp/istoreos-iso-build/live-build/build.log
+            /tmp/istoreos-iso-build/live-build/config
+          retention-days: 90
       
       - name: Upload ISO artifact
+        if: steps.convert.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: isstoreos-live-iso
