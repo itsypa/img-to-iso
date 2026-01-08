@@ -149,36 +149,66 @@ jobs:
           path: ${{ steps.download.outputs.iso_name }}
           retention-days: 90
       
-      - name: Get latest release
+      - name: Verify ISO file exists
         if: steps.convert.outcome == 'success'
+        id: verify-iso
+        run: |
+          ISO_NAME=${{ steps.download.outputs.iso_name }}
+          echo "Checking if $ISO_NAME exists..."
+          ls -la "$ISO_NAME"
+          if [ -f "$ISO_NAME" ]; then
+            echo "✓ ISO file exists: $ISO_NAME"
+            echo "iso_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "✗ ISO file does not exist: $ISO_NAME" >&2
+            echo "iso_exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Get latest release information
+        if: steps.verify-iso.outputs.iso_exists == 'true'
         id: get-latest-release
         run: |
           REPO_FULL="${{ github.repository }}"
           API_URL="https://api.github.com/repos/$REPO_FULL/releases/latest"
           
-          # 获取最新Release信息
-          LATEST_RELEASE=$(curl -s "$API_URL")
+          echo "Getting latest release from: $API_URL"
           
-          # 提取Release标签
-          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
-          RELEASE_ID=$(echo "$LATEST_RELEASE" | jq -r '.id')
+          # 使用授权访问API
+          LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$API_URL")
           
-          echo "Latest release tag: $TAG_NAME"
-          echo "Latest release ID: $RELEASE_ID"
+          echo "API Response: $LATEST_RELEASE"  # 调试输出
           
-          # 输出到GitHub Actions变量
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 检查是否有最新Release
+          if echo "$LATEST_RELEASE" | grep -q "Not Found"; then
+            echo "No existing release found, will create a new one"
+            echo "has_release=false" >> $GITHUB_OUTPUT
+          else
+            # 提取Release信息
+            TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+            RELEASE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.name')
+            
+            echo "Found latest release: $TAG_NAME ($RELEASE_NAME)"
+            echo "has_release=true" >> $GITHUB_OUTPUT
+            echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          fi
       
-      - name: Upload ISO to latest release
-        if: steps.convert.outcome == 'success'
+      - name: Create or update release
+        if: steps.verify-iso.outputs.iso_exists == 'true'
+        id: release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get-latest-release.outputs.tag_name }}
+          # 如果有最新Release，使用其标签；否则创建新标签
+          tag_name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.tag_name || format('v{0}', github.run_number) }}
+          name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.release_name || format('iStoreOS ISO Build {0}', github.run_number) }}
+          body: |
+            ${{ steps.get-latest-release.outputs.has_release == 'true' && 'Updated release with ISO file' || 'Initial release with ISO file' }}
+            
+            - Generated ISO: ${{ steps.download.outputs.iso_name }}
+            - Built from: ${{ steps.download.outputs.img_name }}
+            - Build run: ${{ github.run_number }}
           files: ${{ steps.download.outputs.iso_name }}
-          append_body: true
-          body: "Added ISO file: ${{ steps.download.outputs.iso_name }}"
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
