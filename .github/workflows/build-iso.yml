@@ -38,27 +38,64 @@ jobs:
       - name: Download img.gz from current repo latest release
         id: download
         run: |
-          # 获取当前仓库的最新Release
-          REPO_OWNER="${{ github.repository_owner }}"
-          REPO_NAME="${{ github.event.repository.name }}"
+          # 获取当前仓库信息（更可靠的方式）
+          REPO_FULL="${{ github.repository }}"  # 格式：owner/name
+          REPO_OWNER=$(echo "$REPO_FULL" | cut -d'/' -f1)
+          REPO_NAME=$(echo "$REPO_FULL" | cut -d'/' -f2)
+          
+          echo "Using repository: $REPO_FULL"  # 调试信息
+          echo "Owner: $REPO_OWNER"  # 调试信息
+          echo "Name: $REPO_NAME"  # 调试信息
           
           # 使用GitHub API获取当前仓库最新Release的资产
-          LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest")
+          API_URL="https://api.github.com/repos/$REPO_FULL/releases/latest"
+          echo "API URL: $API_URL"  # 调试信息
+          
+          # 调用API并检查响应
+          LATEST_RELEASE=$(curl -s -w "\n%{http_code}\n" "$API_URL")
+          HTTP_CODE=$(echo "$LATEST_RELEASE" | tail -n 1)
+          LATEST_RELEASE=$(echo "$LATEST_RELEASE" | head -n -1)
+          
+          echo "HTTP Status: $HTTP_CODE"  # 调试信息
+          echo "API Response: $LATEST_RELEASE"  # 调试信息
+          
+          # 检查HTTP状态码
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "Error: Failed to get latest release, HTTP status: $HTTP_CODE" >&2
+            exit 1
+          fi
           
           # 查找img.gz文件
           IMG_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | endswith(".img.gz")) | .browser_download_url')
           
-          if [ -z "$IMG_URL" ]; then
+          echo "Found IMG URL: $IMG_URL"  # 调试信息
+          
+          if [ -z "$IMG_URL" ] || [ "$IMG_URL" = "null" ]; then
             echo "Error: No .img.gz file found in latest release" >&2
             exit 1
           fi
           
           IMG_NAME=$(basename "$IMG_URL")
-          wget -O "$IMG_NAME" "$IMG_URL"
+          echo "Downloading: $IMG_NAME"  # 调试信息
+          
+          # 下载文件
+          wget -v -O "$IMG_NAME" "$IMG_URL" || {
+            echo "Error: Failed to download file" >&2
+            exit 2
+          }
+          
+          # 验证文件存在
+          if [ ! -f "$IMG_NAME" ]; then
+            echo "Error: File $IMG_NAME not found after download" >&2
+            exit 2
+          fi
+          
+          echo "Downloaded file: $(ls -la $IMG_NAME)"  # 调试信息
           
           echo "img_name=$IMG_NAME" >> $GITHUB_OUTPUT
           # 生成对应的ISO文件名
           ISO_NAME="${IMG_NAME%.img.gz}.iso"
+          echo "Generated ISO name: $ISO_NAME"  # 调试信息
           echo "iso_name=$ISO_NAME" >> $GITHUB_OUTPUT
       
       - name: Extract img file
