@@ -148,3 +148,16 @@ jobs:
           name: ${{ steps.download.outputs.iso_name }}
           path: ${{ steps.download.outputs.iso_name }}
           retention-days: 90
+      
+      - name: Release ISO file
+        if: steps.convert.outcome == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.download.outputs.iso_name }}
+          name: ${{ steps.download.outputs.iso_name }}
+          body: "iStoreOS ISO built from ${{ steps.download.outputs.img_name }}"
+          files: ${{ steps.download.outputs.iso_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
