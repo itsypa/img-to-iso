@@ -1,0 +1,64 @@
+`yaml
+name: Build iStoreOS ISO from img.gz
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      isstoreos_version:
+        description: 'iStoreOS Version (optional)'
+        required: false
+        default: ''
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    name: Build iStoreOS ISO
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up build environment
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            live-build \
+            debootstrap \
+            squashfs-tools \
+            xorriso \
+            qemu-utils \
+            gzip \
+            wget \
+            curl \
+            jq
+      
+      - name: Download iStoreOS img.gz
+        run: |
+          if [ -n "${{ github.event.inputs.isstoreos_version }}" ]; then
+            VERSION=${{ github.event.inputs.isstoreos_version }}
+            wget -O isstoreos.img.gz https://github.com/istoreos/istoreos/releases/download/v${VERSION}/istoreos-x86-64-generic-squashfs-combined.img.gz
+          else
+            LATEST_RELEASE=$(curl -s https://api.github.com/repos/istoreos/istoreos/releases/latest)
+            IMG_URL=$(echo $LATEST_RELEASE | jq -r '.assets[] | select(.name | contains("x86-64-generic-squashfs-combined.img.gz")) | .browser_download_url')
+            wget -O isstoreos.img.gz $IMG_URL
+          fi
+      
+      - name: Extract img file
+        run: gunzip isstoreos.img.gz
+      
+      - name: Make conversion script executable
+        run: chmod +x convert.sh
+      
+      - name: Run conversion script
+        run: sudo ./convert.sh isstoreos.img
+      
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: isstoreos-live-iso
+          path: isstoreos-live.iso
+          retention-days: 90
