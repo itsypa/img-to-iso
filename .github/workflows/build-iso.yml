@@ -114,14 +114,14 @@ jobs:
           ISO_NAME=${{ steps.download.outputs.iso_name }}
           xorriso -as mkisofs -o $ISO_NAME -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -J -R -V "iStoreOS Installer" iso/
 
-      - name: Upload ISO artifact
+      - name: Upload ISO to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.download.outputs.iso_name }}
           path: ${{ steps.download.outputs.iso_name }}
           retention-days: 90
 
-      - name: Release ISO file
+      - name: Create Release with Artifacts link
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "iso-build-${{ github.run_number }}"
@@ -131,6 +131,11 @@ jobs:
             - Generated ISO: ${{ steps.download.outputs.iso_name }}
             - Built from: ${{ steps.download.outputs.img_name }}
             - Build run: ${{ github.run_number }}
-          files: ${{ steps.download.outputs.iso_name }}
+            
+            **Download ISO from Artifacts:**
+            - Click the "Actions" tab
+            - Select this workflow run
+            - Scroll down to "Artifacts" section
+            - Download the ISO file
           draft: false
           prerelease: false
