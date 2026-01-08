@@ -1,0 +1,14 @@
+#!/bin/sh
+
+distribution=bookworm
+architecture=amd64
+debootstrap_options="--variant=minbase"
+
+# Live Build configuration
+lb config \
+    --distribution "$distribution" \
+    --architecture "$architecture" \
+    --debootstrap-options "$debootstrap_options" \
+    --archive-areas "main contrib non-free-firmware" \
+    --binary-images iso-hybrid \
+    --bootappend-live "boot=live persistence quiet"

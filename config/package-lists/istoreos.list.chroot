@@ -1,0 +1,14 @@
+# iStoreOS required packages
+linux-image-amd64
+live-boot
+initramfs-tools
+aufs-tools
+squashfs-tools
+qemu-utils
+wget
+curl
+vim-tiny
+htop
+openssh-client
+isohybrid
+mtools
