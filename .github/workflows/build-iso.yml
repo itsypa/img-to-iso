@@ -1,4 +1,3 @@
-`yaml
 name: Build iStoreOS ISO from img.gz
 
 on:
@@ -12,6 +11,10 @@ on:
         description: 'iStoreOS Version (optional)'
         required: false
         default: ''
+      output_iso_name:
+        description: 'Output ISO Filename (default: isstoreos-live.iso)'
+        required: false
+        default: 'isstoreos-live.iso'
 
 jobs:
   build-iso:
@@ -42,6 +45,7 @@ jobs:
             VERSION=${{ github.event.inputs.isstoreos_version }}
             wget -O isstoreos.img.gz https://github.com/istoreos/istoreos/releases/download/v${VERSION}/istoreos-x86-64-generic-squashfs-combined.img.gz
           else
+            # Get latest release
             LATEST_RELEASE=$(curl -s https://api.github.com/repos/istoreos/istoreos/releases/latest)
             IMG_URL=$(echo $LATEST_RELEASE | jq -r '.assets[] | select(.name | contains("x86-64-generic-squashfs-combined.img.gz")) | .browser_download_url')
             wget -O isstoreos.img.gz $IMG_URL
@@ -54,11 +58,11 @@ jobs:
         run: chmod +x convert.sh
       
       - name: Run conversion script
-        run: sudo ./convert.sh isstoreos.img
+        run: sudo ./convert.sh isstoreos.img "${{ github.event.inputs.output_iso_name }}"
       
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
           name: isstoreos-live-iso
-          path: isstoreos-live.iso
+          path: ${{ github.event.inputs.output_iso_name }}
           retention-days: 90
