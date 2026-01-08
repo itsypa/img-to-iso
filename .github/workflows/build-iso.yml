@@ -193,22 +193,47 @@ jobs:
             echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
           fi
       
-      - name: Create or update release
+      - name: Debug release parameters
+        if: steps.verify-iso.outputs.iso_exists == 'true'
+        run: |
+          echo "=== Release Parameters Debug ==="
+          echo "GitHub Repository: ${{ github.repository }}"
+          echo "GitHub Token exists: ${{ env.GITHUB_TOKEN != '' }}"
+          echo "ISO File: ${{ steps.download.outputs.iso_name }}"
+          echo "Has release: ${{ steps.get-latest-release.outputs.has_release }}"
+          echo "Tag name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.tag_name || format('v{0}', github.run_number) }}"
+          echo "Release name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.release_name || format('iStoreOS ISO Build {0}', github.run_number) }}"
+          echo "================================"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create or update release with debug
         if: steps.verify-iso.outputs.iso_exists == 'true'
         id: release
+        continue-on-error: false
         uses: softprops/action-gh-release@v2
         with:
-          # 如果有最新Release，使用其标签；否则创建新标签
-          tag_name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.tag_name || format('v{0}', github.run_number) }}
-          name: ${{ steps.get-latest-release.outputs.has_release == 'true' && steps.get-latest-release.outputs.release_name || format('iStoreOS ISO Build {0}', github.run_number) }}
+          # 简化逻辑，直接使用当前构建编号创建新标签
+          tag_name: "iso-build-${{ github.run_number }}"
+          name: "iStoreOS ISO Build ${{ github.run_number }}"
           body: |
-            ${{ steps.get-latest-release.outputs.has_release == 'true' && 'Updated release with ISO file' || 'Initial release with ISO file' }}
+            iStoreOS ISO Build ${{ github.run_number }}
             
             - Generated ISO: ${{ steps.download.outputs.iso_name }}
             - Built from: ${{ steps.download.outputs.img_name }}
             - Build run: ${{ github.run_number }}
+            - Repository: ${{ github.repository }}
           files: ${{ steps.download.outputs.iso_name }}
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Post-release debug
+        if: always()
+        run: |
+          echo "=== Post-Release Debug ==="
+          echo "Release step outcome: ${{ steps.release.outcome }}"
+          echo "Release step conclusion: ${{ steps.release.conclusion }}"
+          echo "================================"
