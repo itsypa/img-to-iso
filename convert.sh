@@ -5,13 +5,14 @@
 set -e
 
 # 检查参数
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <istoreos-image.img>"
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <istoreos-image.img> [output-iso-name]"
     exit 1
 fi
 
 IMG_FILE=$1
-ISO_NAME="isstoreos-live.iso"
+# 使用默认值或用户提供的文件名
+ISO_NAME=${2:-"isstoreos-live.iso"}
 WORK_DIR="/tmp/istoreos-iso-build"
 LIVE_DIR="$WORK_DIR/live-build"
 ROOTFS_DIR="$WORK_DIR/rootfs"
