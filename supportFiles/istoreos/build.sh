@@ -89,13 +89,20 @@ dd if=/dev/zero of=efiboot.img bs=$SIZE count=1
 mmd -i efiboot.img efi efi/boot
 mcopy -vi efiboot.img $HOME/LIVE_BOOT/tmp/bootx64.efi ::efi/boot/
 
+# 使用环境变量ISO_NAME，如果没有设置则使用默认值
+ISO_NAME=${ISO_NAME:-istoreos-installer}
+
+# 使用ISO_NAME作为卷标和文件名
+VOLUME_LABEL="${ISO_NAME^^}"
+FINAL_ISO="${ISO_NAME}.iso"
+
 echo Build ISO
 xorriso \
     -as mkisofs \
     -iso-level 3 \
-    -o "${HOME}/LIVE_BOOT/debian-custom.iso" \
+    -o "${HOME}/LIVE_BOOT/${FINAL_ISO}" \
     -full-iso9660-filenames \
-    -volid "DEBIAN_CUSTOM" \
+    -volid "${VOLUME_LABEL}" \
     -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
     -eltorito-boot \
         isolinux/isolinux.bin \
@@ -111,6 +118,6 @@ xorriso \
     "${HOME}/LIVE_BOOT/staging"
 
 echo Copy output
-cp -v $HOME/LIVE_BOOT/debian-custom.iso /output/istoreos-installer-x86_64.iso
-chmod -v 666 /output/istoreos-installer-x86_64.iso
+cp -v $HOME/LIVE_BOOT/${FINAL_ISO} /output/${FINAL_ISO}
+chmod -v 666 /output/${FINAL_ISO}
 ls -lah /output

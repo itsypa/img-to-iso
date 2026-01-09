@@ -1,4 +1,4 @@
-name: "Build ImmortalWrt Installer ISO"
+name: "Build iStoreOS 24.10.1 Installer ISO"
 
 on:
  workflow_dispatch:
@@ -9,21 +9,18 @@ jobs:
     runs-on: "ubuntu-22.04"
 
     steps:
-      - name: "Get Date"
-        run: |
-          echo "DATESTAMP=$(date +'%Y-%m-%d')" >> $GITHUB_ENV 
 
       - name: "Checking out git repository"
         uses: actions/checkout@v2
       
       - name: Set executable permissions
         run: |
-          chmod +x ${{ github.workspace }}/imm.sh
-          chmod +x ${{ github.workspace }}/supportFiles/immortalwrt/build.sh
+          chmod +x ${{ github.workspace }}/istoreos.sh
+          chmod +x ${{ github.workspace }}/supportFiles/istoreos/build.sh
 
-      - name: "Build Image"
+      - name: "Build iStoreOS Installer ISO"
         run: |
-          ./imm.sh
+          ./istoreos.sh
       
       - name: "Get Generated ISO File Name"
         run: |
@@ -38,7 +35,7 @@ jobs:
         uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: "${{ env.ISO_NAME }}"
-          body_path: ${{ github.workspace }}/supportFiles/immortalwrt/info.md
+          body_path: ${{ github.workspace }}/supportFiles/istoreos/info.md
           files: |
             ${{ env.ISO_FILE }}
           token: ${{ secrets.GITHUB_TOKEN }}
