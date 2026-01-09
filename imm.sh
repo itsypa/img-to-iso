@@ -12,7 +12,7 @@ fi
 LATEST_RELEASE=$(curl -s https://api.github.com/repos/$REPO/releases/latest)
 
 # 查找immortalwrt镜像文件，匹配模式：immortalwrt-*.img.gz
-FILE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | test("^immortalwrt-.*\.img\.gz$")) | .name' | head -1)
+FILE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | startswith("immortalwrt-") and endswith(".img.gz")) | .name' | head -1)
 
 if [[ -z "$FILE_NAME" ]]; then
   echo "错误：未找到immortalwrt镜像文件"
