@@ -3,6 +3,15 @@
 
 set -e
 
+# 获取版本号参数
+VERSION="$1"
+# 如果没有提供版本号，默认为空
+if [[ -z "$VERSION" ]]; then
+  VERSION=""
+else
+  VERSION="-$VERSION"
+fi
+
 echo "🔧 修复 buster 的源..."
 
 cat > /etc/apt/sources.list <<EOF
@@ -114,6 +123,6 @@ xorriso \
     "${HOME}/LIVE_BOOT/staging"
 
 echo Copy output
-cp -v $HOME/LIVE_BOOT/debian-custom.iso /output/immortalwrt.iso
-chmod -v 666 /output/immortalwrt.iso
+cp -v $HOME/LIVE_BOOT/debian-custom.iso /output/immortalwrt$VERSION.iso
+chmod -v 666 /output/immortalwrt$VERSION.iso
 ls -lah /output

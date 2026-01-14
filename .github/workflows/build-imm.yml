@@ -1,7 +1,11 @@
 name: "Build ImmortalWrt Installer ISO"
 
 on:
- workflow_dispatch:
+  workflow_dispatch:
+  release:
+    types: [published, edited]
+    tags:
+      - immortalwrt
 
 jobs:
   build-release:
@@ -9,10 +13,6 @@ jobs:
     runs-on: "ubuntu-22.04"
 
     steps:
-      - name: "Get Date"
-        run: |
-          echo "DATESTAMP=$(date +'%Y-%m-%d')" >> $GITHUB_ENV 
-
       - name: "Checking out git repository"
         uses: actions/checkout@v2
       
@@ -31,7 +31,7 @@ jobs:
           tag_name: "ImmortalWrt-ISO"
           body_path: ${{ github.workspace }}/supportFiles/immortalwrt/info.md
           files: |
-            output/immortalwrt.iso
+            output/immortalwrt-*.iso
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
