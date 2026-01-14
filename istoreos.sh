@@ -7,7 +7,7 @@ REPO="${GITHUB_REPOSITORY:-itsypa/img-to-iso}"
 TAG="istoreos.img.gz"
 
 # 查找带版本号的img.gz文件，支持istoreos+版本号.img.gz格式
-FILE_NAME=$(curl -s https://api.github.com/repos/$REPO/releases/tags/$TAG | jq -r '.assets[] | select(.name | test("^istoreos.*\.img\.gz$")) | .name' | head -1)
+FILE_NAME=$(curl -s https://api.github.com/repos/$REPO/releases/tags/$TAG | jq -r '.assets[] | select(.name | test("^istoreos.*[.]img[.]gz$")) | .name' | head -1)
 
 if [[ -z "$FILE_NAME" || "$FILE_NAME" == "null" ]]; then
   echo "错误：未找到带版本号的img.gz文件"
