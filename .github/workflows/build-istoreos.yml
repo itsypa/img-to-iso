@@ -3,6 +3,8 @@ name: "Build iStoreOS Installer ISO"
 on:
   release:
     types: [published, edited]
+    tags:
+      - istoreos.img.gz
 
 jobs:
   build-release:
@@ -21,12 +23,12 @@ jobs:
 
       - name: "Build iStoreOS Installer ISO"
         run: |
-          ./istoreos.sh ${{ github.event.release.tag_name }}
+          ./istoreos.sh
       
       - name: "Publish"
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: istoreos.iso
           body_path: ${{ github.workspace }}/supportFiles/istoreos/info.md
           files: |
             output/istoreos-*.iso

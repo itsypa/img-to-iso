@@ -1,18 +1,10 @@
 #!/bin/bash
 
-# 检查是否提供了版本号参数
-if [[ -z "$1" ]]; then
-  echo "错误：请提供版本号作为参数"
-  echo "使用方法：$0 <version>"
-  exit 1
-fi
-
-VERSION="$1"
 mkdir -p openwrt
 
-# 从当前release获取带版本号的img.gz文件
+# 从固定tag "istoreos.img.gz" 获取带版本号的img.gz文件
 REPO="${GITHUB_REPOSITORY:-itsypa/img-installer}"
-TAG="$VERSION"
+TAG="istoreos.img.gz"
 
 # 查找带版本号的img.gz文件，支持istoreos+版本号.img.gz格式
 FILE_NAME=$(curl -s https://api.github.com/repos/$REPO/releases/tags/$TAG | jq -r '.assets[] | select(.name | test("^istoreos.*\.img\.gz$")) | .name' | head -1)
