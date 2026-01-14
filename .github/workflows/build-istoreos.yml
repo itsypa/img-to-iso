@@ -7,6 +7,9 @@ on:
     tags:
       - istoreos.img.gz
 
+permissions:
+  contents: write
+
 jobs:
   build-release:
     name: "Build and Release"
