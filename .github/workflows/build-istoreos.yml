@@ -1,6 +1,7 @@
 name: "Build iStoreOS Installer ISO"
 
 on:
+  workflow_dispatch:
   release:
     types: [published, edited]
     tags:
