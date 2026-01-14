@@ -3,8 +3,7 @@
 show_menu() {
     clear
     echo "================================================="
-    echo "  iStoreOS Installer for all virtual machine"
-    echo "  by wukongdaily"
+    echo "  iStoreOS Installer by itsypa"
     echo "================================================="
     echo "1. Install iStoreOS"
     echo "0. Quit"

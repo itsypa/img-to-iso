@@ -1,4 +1,4 @@
-name: "Build iStoreOS 24.10.1 Installer ISO"
+name: "Build iStoreOS Installer ISO"
 
 on:
  workflow_dispatch:
@@ -22,22 +22,13 @@ jobs:
         run: |
           ./istoreos.sh
       
-      - name: "Get Generated ISO File Name"
-        run: |
-          # 获取output目录下的ISO文件名
-          ISO_FILE=$(ls -1 output/*.iso)
-          echo "ISO_FILE=${ISO_FILE}" >> $GITHUB_ENV
-          # 提取文件名用于tag
-          ISO_NAME=$(basename "${ISO_FILE}" .iso)
-          echo "ISO_NAME=${ISO_NAME}" >> $GITHUB_ENV
-      
       - name: "Publish"
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: "${{ env.ISO_NAME }}"
+          tag_name: "iStoreOS-ISO"
           body_path: ${{ github.workspace }}/supportFiles/istoreos/info.md
           files: |
-            ${{ env.ISO_FILE }}
+            output/istoreos.iso
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
