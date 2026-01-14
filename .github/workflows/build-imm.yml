@@ -5,7 +5,7 @@ on:
   release:
     types: [published, edited]
     tags:
-      - immortalwrt
+      - immortalwrt.img.gz
 
 permissions:
   contents: write
@@ -31,10 +31,11 @@ jobs:
       - name: "Publish"
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: "ImmortalWrt-ISO"
+          tag_name: immortalwrt.iso
           body_path: ${{ github.workspace }}/supportFiles/immortalwrt/info.md
           files: |
             output/immortalwrt-*.iso
           token: ${{ secrets.GITHUB_TOKEN }}
+          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
