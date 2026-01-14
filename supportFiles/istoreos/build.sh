@@ -1,6 +1,16 @@
 #!/bin/bash
 # Based from https://willhaley.com/blog/custom-debian-live-environment/
+
 set -e
+
+# 获取版本号参数
+VERSION="$1"
+# 如果没有提供版本号，默认为空
+if [[ -z "$VERSION" ]]; then
+  VERSION=""
+else
+  VERSION="-$VERSION"
+fi
 
 echo "🔧 修复 buster 的源..."
 
@@ -14,6 +24,7 @@ echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-vali
 apt-get update
 
 echo "🚀 开始执行 build.sh ..."
+
 echo Install required tools
 apt-get update
 apt-get -y install debootstrap squashfs-tools xorriso isolinux syslinux-efi  grub-pc-bin grub-efi-amd64-bin mtools dosfstools parted
@@ -112,6 +123,6 @@ xorriso \
     "${HOME}/LIVE_BOOT/staging"
 
 echo Copy output
-cp -v $HOME/LIVE_BOOT/debian-custom.iso /output/istoreos.iso
-chmod -v 666 /output/istoreos.iso
+cp -v $HOME/LIVE_BOOT/debian-custom.iso /output/istoreos$VERSION.iso
+chmod -v 666 /output/istoreos$VERSION.iso
 ls -lah /output
