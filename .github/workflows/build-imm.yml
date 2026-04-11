@@ -2,13 +2,17 @@ name: "Build ImmortalWrt Installer ISO"
 
 on:
   workflow_dispatch:
-  release:
-    types: [published, edited]
-    tags:
-      - immortalwrt.img.gz
+
+# 防止同一时间运行多个相同工作流
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 设置超时时间（4小时）
+timeout-minutes: 240
 
 permissions:
-  contents: write
+  contents: write  # 发布release需要写权限
 
 jobs:
   build-release:
@@ -17,16 +21,41 @@ jobs:
 
     steps:
       - name: "Checking out git repository"
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       
       - name: Set executable permissions
         run: |
           chmod +x ${{ github.workspace }}/imm.sh
           chmod +x ${{ github.workspace }}/supportFiles/immortalwrt/build.sh
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/docker
+            /tmp/.buildx-cache
+            .docker-cache
+          key: ${{ runner.os }}-docker-${{ hashFiles('supportFiles/immortalwrt/build.sh', 'supportFiles/immortalwrt/**/*') }}
+          restore-keys: |
+            ${{ runner.os }}-docker-
+
+      - name: Cache Debian packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/apt
+          key: ${{ runner.os }}-apt-${{ hashFiles('supportFiles/immortalwrt/**/*.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
       - name: "Build Image"
         run: |
+          set -e  # 遇到错误立即退出
+          echo "开始构建 ImmortalWrt 安装器..."
           ./imm.sh
+          echo "构建完成！"
       
       - name: "Publish"
         uses: softprops/action-gh-release@v2.2.1

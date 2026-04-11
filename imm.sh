@@ -43,9 +43,44 @@ else
 fi
 
 mkdir -p output
+
+# 设置Docker构建缓存目录
+DOCKER_CACHE_DIR="$(pwd)/.docker-cache"
+mkdir -p "$DOCKER_CACHE_DIR"
+
+echo "使用Docker Buildx进行构建（启用缓存）..."
+
+# 使用Buildx构建，启用缓存
+docker buildx build \
+  --progress plain \
+  --tag img-to-iso-immortalwrt \
+  --load \
+  --cache-from type=local,src="$DOCKER_CACHE_DIR" \
+  --cache-to type=local,dest="$DOCKER_CACHE_DIR",mode=max \
+  -f - . <<EOF
+FROM debian:buster
+
+# 设置APT缓存
+RUN mkdir -p /var/cache/apt/archives/partial && \
+    mkdir -p /var/lib/apt/lists/partial && \
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
+# 复制构建脚本
+COPY supportFiles/immortalwrt/build.sh /build.sh
+RUN chmod +x /build.sh
+
+# 设置工作目录
+WORKDIR /build
+
+# 复制必要的文件
+COPY imm/immortalwrt-$ISO_VERSION.img /mnt/immortalwrt.img
+COPY supportFiles/immortalwrt/ /supportFiles/immortalwrt/
+
+# 设置构建命令
+CMD ["/build.sh", "$ISO_VERSION"]
+EOF
+
+# 运行容器
 docker run --privileged --rm \
-        -v $(pwd)/output:/output \
-        -v $(pwd)/supportFiles:/supportFiles:ro \
-        -v $(pwd)/imm/immortalwrt-$ISO_VERSION.img:/mnt/immortalwrt.img \
-        debian:buster \
-        /supportFiles/immortalwrt/build.sh "$ISO_VERSION"
+  -v $(pwd)/output:/output \
+  img-to-iso-immortalwrt
