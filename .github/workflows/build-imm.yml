@@ -8,9 +8,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# 设置超时时间（4小时）
-timeout-minutes: 240
-
 permissions:
   contents: write  # 发布release需要写权限
 
