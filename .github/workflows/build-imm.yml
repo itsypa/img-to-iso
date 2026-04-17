@@ -3,9 +3,9 @@ name: "Build ImmortalWrt Installer ISO"
 on:
   workflow_dispatch:
 
-# 防止同一时间运行多个相同工作流
+# 同一工作流同一分支只允许一个运行实例，新触发时自动取消旧的
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 permissions:
