@@ -2,29 +2,43 @@
 
 mkdir -p openwrt
 
-# 从固定tag "istoreos.img.gz" 获取带版本号的img.gz文件
 REPO="${GITHUB_REPOSITORY:-itsypa/img-to-iso}"
-TAG="istoreos.img.gz"
 
-# 查找带版本号的img.gz文件，支持istoreos+版本号.img.gz格式
-FILE_NAME=$(curl -s https://api.github.com/repos/$REPO/releases/tags/$TAG | jq -r '.assets[] | select(.name | test("^istoreos.*[.]img[.]gz$")) | .name' | head -1)
+# 从所有 istoreos-*.img.gz 的 Release 中，按推送时间找到最新的
+echo "查找最新的 iStoreOS img.gz Release..."
+
+LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases" | \
+  jq -r '[.[] | select(.tag_name | test("^istoreos-.*[.]img[.]gz$"))] | sort_by(.published_at) | reverse | .[0]')
+
+if [[ -z "$LATEST_RELEASE" || "$LATEST_RELEASE" == "null" ]]; then
+  echo "错误：未找到 iStoreOS img.gz Release"
+  exit 1
+fi
+
+# 提取 Release 信息
+TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+PUBLISHED_AT=$(echo "$LATEST_RELEASE" | jq -r '.published_at')
+echo "最新 Release tag: $TAG_NAME (发布时间: $PUBLISHED_AT)"
+
+# 从 Release assets 中查找 img.gz 文件
+FILE_NAME=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | test("^istoreos.*[.]img[.]gz$")) | .name' | head -1)
 
 if [[ -z "$FILE_NAME" || "$FILE_NAME" == "null" ]]; then
-  echo "错误：未找到带版本号的img.gz文件"
+  echo "错误：Release $TAG_NAME 中未找到 img.gz 文件"
   exit 1
 fi
 
 # 提取版本号（去掉istoreos-前缀和.img.gz后缀）
 ISO_VERSION=$(echo "$FILE_NAME" | sed -E 's/^istoreos[+-]?([0-9.]+)\.img\.gz$/\1/')
 
-OUTPUT_PATH="openwrt/$FILE_NAME"
-DOWNLOAD_URL=$(curl -s https://api.github.com/repos/$REPO/releases/tags/$TAG | jq -r '.assets[] | select(.name == "'"$FILE_NAME"'") | .browser_download_url')
+DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name == "'"$FILE_NAME"'") | .browser_download_url')
 
 if [[ -z "$DOWNLOAD_URL" ]]; then
-  echo "错误：未找到文件 $FILE_NAME"
+  echo "错误：未找到文件 $FILE_NAME 的下载地址"
   exit 1
 fi
 
+OUTPUT_PATH="openwrt/$FILE_NAME"
 echo "下载地址: $DOWNLOAD_URL"
 echo "下载文件: $FILE_NAME -> $OUTPUT_PATH"
 curl -L -o "$OUTPUT_PATH" "$DOWNLOAD_URL"

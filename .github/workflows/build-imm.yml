@@ -35,7 +35,7 @@ jobs:
       - name: "Get ISO Version"
         run: |
           ISO_FILE=$(ls -1 output/immortalwrt-*.iso)
-          ISO_NAME=$(basename "${ISO_FILE}" .iso)
+          ISO_NAME=$(basename "${ISO_FILE}")
           echo "ISO_NAME=${ISO_NAME}" >> $GITHUB_ENV
           echo "ISO 文件: ${ISO_FILE}"
           echo "Release tag: ${ISO_NAME}"
