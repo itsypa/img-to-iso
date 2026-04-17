@@ -25,29 +25,29 @@ jobs:
           chmod +x ${{ github.workspace }}/imm.sh
           chmod +x ${{ github.workspace }}/supportFiles/immortalwrt/build.sh
 
-      - name: Cache Docker images
-        uses: actions/cache@v4
-        with:
-          path: ~/.docker
-          key: ${{ runner.os }}-docker-base-${{ hashFiles('*.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-docker-base-
-
       - name: "Build Image"
         run: |
           set -e  # 遇到错误立即退出
           echo "开始构建 ImmortalWrt 安装器..."
           ./imm.sh
           echo "构建完成！"
-      
+
+      - name: "Get ISO Version"
+        run: |
+          ISO_FILE=$(ls -1 output/immortalwrt-*.iso)
+          ISO_NAME=$(basename "${ISO_FILE}" .iso)
+          echo "ISO_NAME=${ISO_NAME}" >> $GITHUB_ENV
+          echo "ISO 文件: ${ISO_FILE}"
+          echo "Release tag: ${ISO_NAME}"
+
       - name: "Publish"
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: immortalwrt.iso
+          tag_name: ${{ env.ISO_NAME }}
+          name: ${{ env.ISO_NAME }}
           body_path: ${{ github.workspace }}/supportFiles/immortalwrt/info.md
           files: |
             output/immortalwrt-*.iso
           token: ${{ secrets.GITHUB_TOKEN }}
-          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
