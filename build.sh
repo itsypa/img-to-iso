@@ -96,7 +96,11 @@ fi
 echo "下载${NAME_PATTERN}成功!"
 echo "正在解压为:${NAME_PATTERN}-$ISO_VERSION.img"
 gzip -d "$OUTPUT_PATH"
-mv "$DIR_NAME/$(basename "$FILE_NAME" .gz)" "$DIR_NAME/${NAME_PATTERN}-$ISO_VERSION.img"
+DECOMPRESSED="$DIR_NAME/$(basename "$FILE_NAME" .gz)"
+TARGET_IMG="$DIR_NAME/${NAME_PATTERN}-$ISO_VERSION.img"
+if [[ "$DECOMPRESSED" != "$TARGET_IMG" ]]; then
+  mv "$DECOMPRESSED" "$TARGET_IMG"
+fi
 ls -lh "$DIR_NAME/"
 echo "准备合成 ${NAME_PATTERN}-$ISO_VERSION 安装器"
 
