@@ -1,0 +1,74 @@
+name: "Build Installer ISO"
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Build target"
+        required: true
+        default: "imm"
+        type: choice
+        options:
+          - imm
+          - istoreos
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.target }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: "Build and Release"
+    runs-on: "ubuntu-22.04"
+    timeout-minutes: 120
+
+    steps:
+      - name: "Checking out git repository"
+        uses: actions/checkout@v4
+
+      - name: Set executable permissions
+        run: |
+          chmod +x ${{ github.workspace }}/build.sh
+          chmod +x ${{ github.workspace }}/supportFiles/build.sh
+
+      - name: "Build Image"
+        run: |
+          echo "开始构建 ${{ inputs.target }} 安装器..."
+          ./build.sh --target ${{ inputs.target }}
+          echo "构建完成！"
+
+      - name: "Get ISO Version"
+        run: |
+          if [[ "${{ inputs.target }}" == "imm" ]]; then
+            PATTERN="immortalwrt-*.iso"
+          else
+            PATTERN="istoreos-*.iso"
+          fi
+          ISO_FILE=$(ls -1 output/$PATTERN 2>/dev/null)
+          if [[ -z "$ISO_FILE" ]]; then
+            echo "ERROR: No ISO file found in output/"
+            exit 1
+          fi
+          ISO_NAME=$(basename "${ISO_FILE}")
+          echo "ISO_NAME=${ISO_NAME}" >> $GITHUB_ENV
+          echo "ISO 文件: ${ISO_FILE}"
+          echo "Release tag: ${ISO_NAME}"
+
+      - name: "Upload ISO Artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: iso-build
+          path: output/*.iso
+
+      - name: "Publish"
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: ${{ env.ISO_NAME }}
+          name: ${{ env.ISO_NAME }}
+          body_path: ${{ github.workspace }}/supportFiles/${{ inputs.target == 'imm' && 'immortalwrt' || 'istoreos' }}/info.md
+          files: |
+            output/${{ inputs.target == 'imm' && 'immortalwrt' || 'istoreos' }}-*.iso
+          token: ${{ secrets.GITHUB_TOKEN }}

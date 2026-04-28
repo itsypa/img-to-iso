@@ -1,16 +1,16 @@
 #!/bin/bash
-# This shell script is executed inside the chroot
-echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+set -euo pipefail
 
 echo Set hostname
 echo "installer" > /etc/hostname
 
-# Set as non-interactive so apt does not prompt for user input
 export DEBIAN_FRONTEND=noninteractive
 
 echo Install security updates and apt-utils
 apt-get update
-apt-get -y install apt || true
+if ! apt-get -y install apt; then
+  echo "WARNING: apt install failed, continuing with existing apt"
+fi
 apt-get -y upgrade
 
 echo Set locale
@@ -30,16 +30,15 @@ echo Enable systemd-networkd as network manager
 systemctl enable systemd-networkd
 
 echo Set resolv.conf to use systemd-resolved
-rm /etc/resolv.conf
+rm -f /etc/resolv.conf
 ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-echo "PermitEmptyPasswords yes" >> /etc/ssh/sshd_config
 echo "root:1234" | chpasswd
 systemctl enable ssh
 
 echo Remove machine-id
-rm /etc/machine-id
+rm -f /etc/machine-id
 
 echo List installed packages
-dpkg --get-selections|tee /packages.txt
+dpkg --get-selections | tee /packages.txt
