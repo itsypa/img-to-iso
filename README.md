@@ -20,13 +20,15 @@
 1. 此项目生成的ISO同时支持物理机和虚拟机的安装
 2. 此项目生成的安装器用于特定的img格式嵌入式系统：`ImmortalWrt`、`iStoreOS`
 3. 通过运行项目根目录的脚本可以构建对应的安装器ISO
-4. 支持自定义img镜像生成iso安装器,镜像压缩包格式为`img.gz`
+4. 支持自定义img镜像生成iso安装器，镜像压缩包格式为`img.gz`
 
 ## ISO自动制作流程
 本项目基于开源项目[debian-live](https://github.com/dpowers86/debian-live)制作，代码采用MIT协议开源。
 
 ### 本地构建流程
-1. 运行根目录的`imm.sh`或`istoreos.sh`脚本
+1. 运行根目录的构建脚本：
+   - 构建 ImmortalWrt 安装器：`./build.sh --target imm`
+   - 构建 iStoreOS 安装器：`./build.sh --target istoreos`
 2. 脚本会从GitHub Releases下载对应的img.gz镜像文件
 3. 使用Docker运行debian容器，挂载必要的卷
 4. 在容器内执行对应的build.sh脚本，构建流程如下：
@@ -36,9 +38,12 @@
    - 挂载proc、dev、sys文件系统
    - 在chroot环境内执行installChroot.sh，安装必要软件包
    - 构建SquashFS文件系统
-   - 配置GRUB引导
-   - 生成最终的ISO文件
+   - 配置GRUB(UEFI)和ISOLINUX(BIOS)双重引导
+   - 使用xorriso生成最终的混合引导ISO文件
 5. ISO文件输出到output目录
+
+### 调试模式
+运行根目录的`debugBuild.sh`脚本可启动一个交互式Docker容器，用于手动调试构建流程。
 
 ### GitHub Actions构建
 - 项目配置了GitHub Workflow，支持手动触发构建
