@@ -29,18 +29,24 @@
 1. 运行根目录的构建脚本：
    - 构建 ImmortalWrt 安装器：`./build.sh --target imm`
    - 构建 iStoreOS 安装器：`./build.sh --target istoreos`
-2. 脚本会从GitHub Releases下载对应的img.gz镜像文件
-3. 使用Docker运行debian容器，挂载必要的卷
-4. 在容器内执行对应的build.sh脚本，构建流程如下：
-   - 安装构建依赖
-   - 使用debootstrap创建Debian chroot环境
-   - 复制配置文件和installChroot.sh脚本到chroot环境
+2. 脚本从GitHub Releases查找并下载对应target的最新`img.gz`镜像文件
+3. 使用`gzip -d`解压为`.img`文件
+4. 启动Docker容器（`debian:buster`），挂载supportFiles、output和img文件等卷
+5. 在容器内执行`supportFiles/build.sh`，详细构建流程如下：
+   - 修复apt源为Debian Buster归档源
+   - 安装构建依赖（debootstrap、squashfs-tools、xorriso、isolinux、grub等）
+   - 使用debootstrap创建Debian Buster最小chroot环境
+   - 复制installChroot.sh、ddd/ddd-common安装脚本及apt源配置到chroot
    - 挂载proc、dev、sys文件系统
-   - 在chroot环境内执行installChroot.sh，安装必要软件包
-   - 构建SquashFS文件系统
-   - 配置GRUB(UEFI)和ISOLINUX(BIOS)双重引导
-   - 使用xorriso生成最终的混合引导ISO文件
-5. ISO文件输出到output目录
+   - 在chroot内执行installChroot.sh：设置hostname、locale、安装Linux内核及工具包、配置SSH和网络
+   - 卸载proc、dev、sys，复制systemd-networkd DHCP网络配置和autologin配置
+   - 将img镜像复制到chroot的`/mnt/`目录
+   - 使用mksquashfs将chroot打包为SquashFS文件系统（排除boot目录）
+   - 从chroot/boot复制vmlinuz和initrd到staging目录
+   - 复制ISOLINUX和GRUB引导配置文件及引导镜像
+   - 使用grub-mkstandalone生成UEFI独立引导文件(bootx64.efi)，并制作efiboot.img
+   - 使用xorriso生成混合引导ISO（支持BIOS通过ISOLINUX引导，UEFI通过GRUB引导）
+6. ISO文件输出到output目录
 
 ### 调试模式
 运行根目录的`debugBuild.sh`脚本可启动一个交互式Docker容器，用于手动调试构建流程。
