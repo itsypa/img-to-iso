@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
 echo Set hostname
 echo "installer" > /etc/hostname
 
